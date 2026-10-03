@@ -1,0 +1,18 @@
+:root {
+  --paper: #f6f5ef;
+  --white: #fdfdfa;
+  --hero: #f0f1e8;
+  --ink: #303b2f;
+  --muted: #7b8073;
+  --muted-light: #949a8e;
+  --green: #435a41;
+  --green-dark: #344832;
+  --sage-light: #edf0e7;
+  --placeholder: #8b9580;
+  --danger: #aa4b3f;
+  --serif: 'Playfair Display', Georgia, serif;
+  --sans: 'Be Vietnam Pro', system-ui, sans-serif;
+}
+
+
+
