@@ -61,16 +61,28 @@ describe('BookshelfPage - Tủ sách của tôi (Tác phẩm đã đăng)', () =
       expect(wrapper.findAll('.book-story-card').length).toBe(2)
     })
 
-    // Header & stats
+    // Header & stories
     expect(wrapper.text()).toContain('Tủ sách của tôi')
     expect(wrapper.text()).toContain('Vạn Cổ Đệ Nhất Thần')
     expect(wrapper.text()).toContain('Bản Nháp Huyền Ảo')
 
-    // Stats values
-    expect(wrapper.text()).toContain('Tổng tác phẩm')
-    expect(wrapper.text()).toContain('Tổng số chương')
-    expect(wrapper.text()).toContain('Đang phát hành')
-    expect(wrapper.text()).toContain('Bản nháp')
+    // Filter pills with counts
+    expect(wrapper.text()).toContain('Tất cả (2)')
+    expect(wrapper.text()).toContain('Đang ra (1)')
+    expect(wrapper.text()).toContain('Bản nháp (1)')
+  })
+
+  it('falls back to rich mock data when api returns empty or fails', async () => {
+    mockRequest.mockResolvedValueOnce([])
+
+    const wrapper = mount(BookshelfPage)
+
+    await vi.waitFor(() => {
+      expect(wrapper.findAll('.book-story-card').length).toBeGreaterThan(0)
+    })
+
+    expect(wrapper.text()).toContain('Thánh Viên Vị Hoa')
+    expect(wrapper.text()).toContain('Tiếu Diện Giáo Thụ')
   })
 
   it('filters stories by status (All, Published, Draft)', async () => {

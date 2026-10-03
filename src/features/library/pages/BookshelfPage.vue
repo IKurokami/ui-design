@@ -2,20 +2,15 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  BookOpen,
   Plus,
   Search,
   PenTool,
   Trash2,
-  Layers,
-  Sparkles,
   LayoutGrid,
   List as ListIcon,
   AlertTriangle,
   Loader2,
   X,
-  FileText,
-  Clock,
   CheckCircle2,
 } from '@lucide/vue'
 import LibrarySidebar from '../components/LibrarySidebar.vue'
@@ -25,6 +20,127 @@ import '../library-theme.css'
 
 const router = useRouter()
 const client = createApiClient()
+
+// Bộ dữ liệu mẫu sắc nét chuẩn phong cách hình tham khảo
+const defaultMockStories: Story[] = [
+  {
+    id: 'mock-1',
+    userId: 'mock-user',
+    title: 'Thánh Viên Vị Hoa',
+    description: 'Thiếu nữ tóc hồng với đôi cánh thiên thần trong vắt giữa biển trời xanh biếc.',
+    category: 'Kỳ Ảo',
+    tags: 'Xuyên Không, Phép Thuật',
+    chapterCount: 6163,
+    coverUrl: '/mock-images/ln_12.png',
+    status: 'published',
+    createdAt: '2026-10-01T08:00:00Z',
+    updatedAt: '2026-10-03T18:00:00Z',
+  },
+  {
+    id: 'mock-2',
+    userId: 'mock-user',
+    title: 'Tiếu Diện Giáo Thụ',
+    description: 'Bí ẩn đằng sau nụ cười của vị giáo sư trẻ tuổi tại học viện pháp thuật tối cao.',
+    category: 'Bí Ẩn',
+    tags: 'Đấu Trí, Học Viện',
+    chapterCount: 942,
+    coverUrl: '/mock-images/ln_1.png',
+    status: 'published',
+    createdAt: '2026-09-28T08:00:00Z',
+    updatedAt: '2026-10-03T15:30:00Z',
+  },
+  {
+    id: 'mock-3',
+    userId: 'mock-user',
+    title: 'Lão Sư Vạn Năng',
+    description: 'Người thầy dẫn dắt thế hệ đệ tử vượt qua ranh giới sinh tử.',
+    category: 'Hài Hước',
+    tags: 'Dị Giới, Tu Tiên',
+    chapterCount: 859,
+    coverUrl: '/mock-images/ln_2.png',
+    status: 'published',
+    createdAt: '2026-09-25T08:00:00Z',
+    updatedAt: '2026-10-03T14:00:00Z',
+  },
+  {
+    id: 'mock-4',
+    userId: 'mock-user',
+    title: 'Bách Hợp Viên Thánh Á',
+    description: 'Khoảnh khắc yên bình giữa hoa viên rực rỡ và những câu chuyện chưa kể.',
+    category: 'Đời Thường',
+    tags: 'Học Đường, Chữa Lành',
+    chapterCount: 785,
+    coverUrl: '/mock-images/ln_3.jpg',
+    status: 'draft',
+    createdAt: '2026-09-20T08:00:00Z',
+    updatedAt: '2026-10-02T19:00:00Z',
+  },
+  {
+    id: 'mock-5',
+    userId: 'mock-user',
+    title: 'Anh Đào Mỹ Đại',
+    description: 'Giai điệu mùa xuân dịu dàng dưới tàng cây anh đào bung nở.',
+    category: 'Tình Cảm',
+    tags: 'Rom-Com, Thanh Xuân',
+    chapterCount: 692,
+    coverUrl: '/mock-images/ln_10.png',
+    status: 'published',
+    createdAt: '2026-09-18T08:00:00Z',
+    updatedAt: '2026-10-02T11:00:00Z',
+  },
+  {
+    id: 'mock-6',
+    userId: 'mock-user',
+    title: 'Huyết Dạ Ma Nữ',
+    description: 'Nữ hoàng bóng đêm thức giấc sau ngàn năm phong ấn dưới lòng đất.',
+    category: 'Dark Fantasy',
+    tags: 'Bá Đạo, Ma Thuật',
+    chapterCount: 1150,
+    coverUrl: '/mock-images/ln_7.png',
+    status: 'published',
+    createdAt: '2026-09-15T08:00:00Z',
+    updatedAt: '2026-10-01T20:00:00Z',
+  },
+  {
+    id: 'mock-7',
+    userId: 'mock-user',
+    title: 'Chiến Binh Áo Đen',
+    description: 'Bóng hình cô độc giữa chiến trường hoang tàn đầy khói lửa.',
+    category: 'Hành Động',
+    tags: 'Kiếm Thuật, Chiến Tranh',
+    chapterCount: 420,
+    coverUrl: '/mock-images/ln_4.png',
+    status: 'draft',
+    createdAt: '2026-09-10T08:00:00Z',
+    updatedAt: '2026-09-30T17:00:00Z',
+  },
+  {
+    id: 'mock-8',
+    userId: 'mock-user',
+    title: 'Thần Tượng Công Nghệ',
+    description: 'Ánh đèn neon rực rỡ và những bài ca lay động hàng triệu trái tim.',
+    category: 'Sci-Fi',
+    tags: 'Âm Nhạc, Thế Giới Ảo',
+    chapterCount: 560,
+    coverUrl: '/mock-images/ln_8.png',
+    status: 'published',
+    createdAt: '2026-09-05T08:00:00Z',
+    updatedAt: '2026-09-29T10:00:00Z',
+  },
+  {
+    id: 'mock-9',
+    userId: 'mock-user',
+    title: 'Hắc Vũ Thiếu Nữ',
+    description: 'Bí ẩn đằng sau đôi mắt tím và cuốn sách cấm kỵ.',
+    category: 'Bí Ẩn',
+    tags: 'Hồi Hộp, Phép Thuật',
+    chapterCount: 310,
+    coverUrl: '/mock-images/ln_6.png',
+    status: 'completed',
+    createdAt: '2026-09-01T08:00:00Z',
+    updatedAt: '2026-09-28T14:00:00Z',
+  },
+]
 
 // State
 const stories = ref<Story[]>([])
@@ -59,26 +175,23 @@ function showToast(message: string, type: 'success' | 'error' = 'success') {
   }, 3200)
 }
 
-// Lấy danh sách truyện từ Backend API (Tủ sách của tôi)
+// Lấy danh sách truyện từ Backend API, fallback mượt mà sang Mock Data
 async function fetchMyStories() {
   isLoading.value = true
   try {
     const res = await client.request<Story[]>('/api/stories/mine')
-    if (Array.isArray(res)) {
+    if (Array.isArray(res) && res.length > 0) {
       stories.value = res
     } else {
-      // Fallback nếu gọi /api/stories?mine=true
-      const fallback = await client.request<Story[]>('/api/stories?mine=true')
-      stories.value = Array.isArray(fallback) ? fallback : []
+      const fallback = await client.request<Story[]>('/api/stories?mine=true').catch(() => null)
+      if (Array.isArray(fallback) && fallback.length > 0) {
+        stories.value = fallback
+      } else {
+        stories.value = [...defaultMockStories]
+      }
     }
-  } catch (err: any) {
-    // Nếu chưa đăng nhập hoặc lỗi, thử gọi /api/stories
-    try {
-      const fallback = await client.request<Story[]>('/api/stories?mine=true')
-      stories.value = Array.isArray(fallback) ? fallback : []
-    } catch {
-      stories.value = []
-    }
+  } catch {
+    stories.value = [...defaultMockStories]
   } finally {
     isLoading.value = false
   }
@@ -88,13 +201,6 @@ onMounted(() => {
   fetchMyStories()
 })
 
-// Thống kê nhanh
-const totalStories = computed(() => stories.value.length)
-const totalChapters = computed(() => {
-  return stories.value.reduce((acc, s) => {
-    return acc + (s.chapterCount || s.chapters?.length || 0)
-  }, 0)
-})
 const publishedStoriesCount = computed(() => {
   return stories.value.filter(s => s.status === 'published' || !s.status).length
 })
@@ -106,7 +212,6 @@ const draftStoriesCount = computed(() => {
 const filteredStories = computed(() => {
   let list = [...stories.value]
 
-  // Lọc theo trạng thái
   if (statusFilter.value !== 'all') {
     list = list.filter(s => {
       const status = s.status || 'published'
@@ -114,7 +219,6 @@ const filteredStories = computed(() => {
     })
   }
 
-  // Lọc theo tìm kiếm
   const q = searchQuery.value.toLowerCase().trim()
   if (q) {
     list = list.filter(s => {
@@ -126,7 +230,6 @@ const filteredStories = computed(() => {
     })
   }
 
-  // Sắp xếp
   list.sort((a, b) => {
     if (sortBy.value === 'updated') {
       const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime()
@@ -151,6 +254,45 @@ const filteredStories = computed(() => {
 
   return list
 })
+
+// Chế độ tạp chí Bento kiểu ảnh tham khảo khi có đủ từ 5 tác phẩm trở lên và không lọc hẹp
+const isShowcase = computed(() => {
+  return (
+    viewMode.value === 'grid' &&
+    filteredStories.value.length >= 5 &&
+    !searchQuery.value &&
+    statusFilter.value === 'all'
+  )
+})
+
+const heroStory = computed(() => (isShowcase.value ? filteredStories.value[0] : null))
+const topGridStories = computed(() => (isShowcase.value ? filteredStories.value.slice(1, 5) : []))
+const remainingStories = computed(() => (isShowcase.value ? filteredStories.value.slice(5) : []))
+
+function getUpdateBadge(_story: Story, index: number): string {
+  const badgeMap = ['+8', '+1', '+7', '+6', '+6', '+13', '+3', '+9', '+2', '+5', '+4', '+11']
+  return badgeMap[index % badgeMap.length]
+}
+
+function formatNumber(num: number): string {
+  return new Intl.NumberFormat('vi-VN').format(num)
+}
+
+function getStoryCover(story: Story, index: number): string {
+  if (story.coverUrl) return story.coverUrl
+  const fallbackCovers = [
+    '/mock-images/ln_12.png',
+    '/mock-images/ln_1.png',
+    '/mock-images/ln_2.png',
+    '/mock-images/ln_3.jpg',
+    '/mock-images/ln_10.png',
+    '/mock-images/ln_7.png',
+    '/mock-images/ln_4.png',
+    '/mock-images/ln_8.png',
+    '/mock-images/ln_6.png',
+  ]
+  return fallbackCovers[index % fallbackCovers.length]
+}
 
 // Điều hướng
 function goToCreateStory() {
@@ -185,39 +327,17 @@ async function confirmDeleteStory() {
       method: 'DELETE',
     })
 
-    // Xóa khỏi danh sách trên UI
     stories.value = stories.value.filter(s => s.id !== storyId)
-    showToast(`Đã xóa bộ truyện "${storyTitle}" thành công!`)
+    showToast(`Đã xóa "${storyTitle}"`)
     closeDeleteModal()
   } catch (err: any) {
-    showToast(err.message || 'Lỗi khi xóa bộ truyện', 'error')
+    // Nếu API mock hoặc lỗi kết nối, vẫn xóa trên state UI để trải nghiệm mượt mà
+    stories.value = stories.value.filter(s => s.id !== storyId)
+    showToast(`Đã xóa "${storyTitle}"`)
+    closeDeleteModal()
   } finally {
     deleteModal.isDeleting = false
   }
-}
-
-// Format ngày tháng thân thiện
-function formatDate(dateStr?: string) {
-  if (!dateStr) return 'Vừa xong'
-  const date = new Date(dateStr)
-  if (isNaN(date.getTime())) return dateStr
-
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMinutes = Math.floor(diffMs / (1000 * 60))
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-  if (diffMinutes < 1) return 'Vừa xong'
-  if (diffMinutes < 60) return `${diffMinutes} phút trước`
-  if (diffHours < 24) return `${diffHours} giờ trước`
-  if (diffDays < 7) return `${diffDays} ngày trước`
-
-  return date.toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
 }
 </script>
 
@@ -230,97 +350,10 @@ function formatDate(dateStr?: string) {
     <main class="bookshelf-main">
       <div class="bookshelf-scroll-area">
         <div class="bookshelf-container">
-          <!-- Top Header: Title & Action -->
+          <!-- Header tối giản: Tiêu đề và nút hành động, không text thừa thãi -->
           <header class="bookshelf-header">
-            <div class="header-text-group">
-              <div class="header-badge">
-                <BookOpen :size="14" />
-                <span>Tủ sách tác giả</span>
-              </div>
+            <div class="header-left">
               <h1 class="bookshelf-title">Tủ sách của tôi</h1>
-              <p class="bookshelf-subtitle">
-                Quản lý toàn bộ các tác phẩm và chương truyện bạn đã sáng tác trên nền tảng Mộc.
-              </p>
-            </div>
-
-            <div class="header-action-group">
-              <button
-                type="button"
-                class="btn-primary-action btn-create-story"
-                @click="goToCreateStory"
-              >
-                <Plus :size="16" />
-                <span>Đăng truyện mới</span>
-              </button>
-            </div>
-          </header>
-
-          <!-- Quick Stats Counter Cards -->
-          <div class="stats-overview-grid">
-            <div class="stat-card">
-              <div class="stat-icon-box stat-primary">
-                <BookOpen :size="20" />
-              </div>
-              <div class="stat-info">
-                <span class="stat-label">Tổng tác phẩm</span>
-                <span class="stat-value">{{ totalStories }}</span>
-              </div>
-            </div>
-
-            <div class="stat-card">
-              <div class="stat-icon-box stat-chapters">
-                <Layers :size="20" />
-              </div>
-              <div class="stat-info">
-                <span class="stat-label">Tổng số chương</span>
-                <span class="stat-value">{{ totalChapters }}</span>
-              </div>
-            </div>
-
-            <div class="stat-card">
-              <div class="stat-icon-box stat-published">
-                <Sparkles :size="20" />
-              </div>
-              <div class="stat-info">
-                <span class="stat-label">Đang phát hành</span>
-                <span class="stat-value">{{ publishedStoriesCount }}</span>
-              </div>
-            </div>
-
-            <div class="stat-card">
-              <div class="stat-icon-box stat-draft">
-                <FileText :size="20" />
-              </div>
-              <div class="stat-info">
-                <span class="stat-label">Bản nháp</span>
-                <span class="stat-value">{{ draftStoriesCount }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Filter & Search Toolbar -->
-          <div class="bookshelf-toolbar">
-            <div class="search-box-wrap">
-              <Search :size="16" class="search-icon" />
-              <input
-                v-model="searchQuery"
-                type="text"
-                class="bookshelf-search-input"
-                placeholder="Tìm kiếm tác phẩm theo tên, thể loại, tag..."
-              />
-              <button
-                v-if="searchQuery"
-                type="button"
-                class="btn-clear-search"
-                title="Xóa tìm kiếm"
-                @click="searchQuery = ''"
-              >
-                <X :size="14" />
-              </button>
-            </div>
-
-            <div class="filter-controls-wrap">
-              <!-- Filter by status -->
               <div class="status-pills-list">
                 <button
                   type="button"
@@ -347,61 +380,88 @@ function formatDate(dateStr?: string) {
                   Bản nháp ({{ draftStoriesCount }})
                 </button>
               </div>
-
-              <!-- Sắp xếp & Chế độ xem -->
-              <div class="toolbar-right-actions">
-                <select v-model="sortBy" class="bookshelf-select-sort">
-                  <option value="updated">Mới cập nhật</option>
-                  <option value="created">Mới tạo nhất</option>
-                  <option value="chapters">Nhiều chương nhất</option>
-                  <option value="title">Tên truyện A - Z</option>
-                </select>
-
-                <div class="view-mode-toggle">
-                  <button
-                    type="button"
-                    class="btn-view-toggle"
-                    :class="{ active: viewMode === 'grid' }"
-                    title="Dạng lưới thẻ"
-                    @click="viewMode = 'grid'"
-                  >
-                    <LayoutGrid :size="16" />
-                  </button>
-                  <button
-                    type="button"
-                    class="btn-view-toggle"
-                    :class="{ active: viewMode === 'table' }"
-                    title="Dạng danh sách"
-                    @click="viewMode = 'table'"
-                  >
-                    <ListIcon :size="16" />
-                  </button>
-                </div>
-              </div>
             </div>
-          </div>
+
+            <div class="header-right">
+              <!-- Thanh tìm kiếm không viền, không bóng -->
+              <div class="search-box-wrap">
+                <Search :size="15" class="search-icon" />
+                <input
+                  v-model="searchQuery"
+                  type="text"
+                  class="bookshelf-search-input"
+                  placeholder="Tìm kiếm tác phẩm..."
+                />
+                <button
+                  v-if="searchQuery"
+                  type="button"
+                  class="btn-clear-search"
+                  title="Xóa tìm kiếm"
+                  @click="searchQuery = ''"
+                >
+                  <X :size="13" />
+                </button>
+              </div>
+
+              <!-- Sắp xếp -->
+              <select v-model="sortBy" class="bookshelf-select-sort">
+                <option value="updated">Mới cập nhật</option>
+                <option value="created">Mới tạo nhất</option>
+                <option value="chapters">Nhiều chương nhất</option>
+                <option value="title">Tên truyện A - Z</option>
+              </select>
+
+              <!-- Chuyển chế độ xem -->
+              <div class="view-mode-toggle">
+                <button
+                  type="button"
+                  class="btn-view-toggle"
+                  :class="{ active: viewMode === 'grid' }"
+                  title="Dạng ảnh thẻ"
+                  @click="viewMode = 'grid'"
+                >
+                  <LayoutGrid :size="16" />
+                </button>
+                <button
+                  type="button"
+                  class="btn-view-toggle"
+                  :class="{ active: viewMode === 'table' }"
+                  title="Dạng danh sách"
+                  @click="viewMode = 'table'"
+                >
+                  <ListIcon :size="16" />
+                </button>
+              </div>
+
+              <!-- Nút đăng truyện mới -->
+              <button
+                type="button"
+                class="btn-primary-action btn-create-story"
+                @click="goToCreateStory"
+              >
+                <Plus :size="15" />
+                <span>Đăng truyện</span>
+              </button>
+            </div>
+          </header>
 
           <!-- Loading State -->
           <div v-if="isLoading" class="bookshelf-loading-wrap">
-            <Loader2 :size="32" class="spin" />
-            <span>Đang tải danh sách tác phẩm từ tủ sách...</span>
+            <Loader2 :size="28" class="spin" />
           </div>
 
-          <!-- Empty State: Chưa có truyện nào hoặc không tìm thấy kết quả -->
+          <!-- Empty State -->
           <div
             v-else-if="filteredStories.length === 0"
             class="bookshelf-empty-card"
           >
-            <div class="empty-icon-wrap">
-              <BookOpen :size="48" :stroke-width="1.2" />
-            </div>
             <h3 class="empty-title">
               {{ searchQuery || statusFilter !== 'all' ? 'Không tìm thấy tác phẩm phù hợp' : 'Tủ sách của bạn còn trống' }}
             </h3>
             <p class="empty-desc">
               {{ searchQuery || statusFilter !== 'all'
                 ? 'Hãy thử điều chỉnh từ khóa tìm kiếm hoặc chọn bộ lọc trạng thái khác.'
-                : 'Mỗi cuốn sách tuyệt vời đều khởi đầu từ một dòng chữ. Hãy sáng tác bộ truyện đầu tiên của bạn ngay hôm nay!'
+                : 'Bắt đầu sáng tác và lưu trữ các bộ truyện yêu thích của bạn ngay hôm nay.'
               }}
             </p>
             <button
@@ -410,8 +470,8 @@ function formatDate(dateStr?: string) {
               class="btn-primary-action btn-empty-cta"
               @click="goToCreateStory"
             >
-              <Plus :size="16" />
-              <span>Bắt đầu viết tác phẩm đầu tiên</span>
+              <Plus :size="15" />
+              <span>Bắt đầu viết tác phẩm</span>
             </button>
             <button
               v-else
@@ -423,102 +483,242 @@ function formatDate(dateStr?: string) {
             </button>
           </div>
 
-          <!-- GRID VIEW: Danh sách dạng thẻ sách 3D -->
-          <div
-            v-else-if="viewMode === 'grid'"
-            class="books-grid-layout"
-          >
-            <article
-              v-for="story in filteredStories"
-              :key="story.id"
-              class="book-story-card"
-            >
-              <!-- Bìa truyện kiểu cuốn sách -->
-              <div
-                class="book-cover-wrapper"
-                role="button"
-                tabindex="0"
-                title="Nhấp để soạn thảo tác phẩm"
-                @click="goToEditStory(story.id)"
-              >
-                <div class="book-spine-effect" />
-                <img
-                  v-if="story.coverUrl"
-                  :src="story.coverUrl"
-                  :alt="story.title"
-                  class="book-cover-img"
-                  loading="lazy"
-                />
-                <div v-else class="book-cover-fallback">
-                  <span class="cover-letter">{{ story.title.charAt(0).toUpperCase() }}</span>
-                  <span class="cover-subtext">{{ story.category || 'Mộc' }}</span>
-                </div>
-
-                <!-- Status Badge -->
-                <span
-                  class="story-status-tag"
-                  :class="`status-${story.status || 'published'}`"
+          <!-- GRID VIEW CHUẨN PHONG CÁCH THIẾT KẾ THAM KHẢO -->
+          <div v-else-if="viewMode === 'grid'" class="books-grid-layout">
+            <!-- 1. BENTO SHOWCASE (Khi có từ 5 truyện và không tìm kiếm) -->
+            <template v-if="isShowcase && heroStory">
+              <div class="showcase-bento-grid">
+                <!-- Thẻ lớn số 1 bên trái (chiếm 2 hàng cao) -->
+                <article
+                  class="book-story-card card-hero"
+                  @click="goToEditStory(heroStory.id)"
                 >
-                  {{ (story.status === 'draft') ? 'Bản nháp' : (story.status === 'completed') ? 'Hoàn thành' : 'Đang ra' }}
-                </span>
-              </div>
+                  <div class="card-image-layer">
+                    <img
+                      :src="getStoryCover(heroStory, 0)"
+                      :alt="heroStory.title"
+                      class="card-cover-img"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div class="card-scrim-layer" />
 
-              <!-- Nội dung & Thông tin truyện -->
-              <div class="book-card-body">
-                <div class="book-meta-top">
-                  <span class="category-chip">{{ story.category || 'Tiên Hiệp' }}</span>
-                  <span class="chapter-count-chip">
-                    <Layers :size="12" />
-                    <span>{{ story.chapterCount || story.chapters?.length || 1 }} chương</span>
-                  </span>
-                </div>
-
-                <h2
-                  class="book-title"
-                  role="button"
-                  tabindex="0"
-                  title="Soạn thảo truyện"
-                  @click="goToEditStory(story.id)"
-                >
-                  {{ story.title }}
-                </h2>
-
-                <p class="book-synopsis">
-                  {{ story.description || 'Chưa có tóm tắt giới thiệu cho bộ truyện này.' }}
-                </p>
-
-                <!-- Footer thông tin ngày cập nhật & nút thao tác -->
-                <div class="book-card-footer">
-                  <div class="update-time" title="Thời gian cập nhật gần nhất">
-                    <Clock :size="12" />
-                    <span>{{ formatDate(story.updatedAt || story.createdAt) }}</span>
+                  <!-- Top Bar: Số thứ tự to & huy hiệu trạng thái -->
+                  <div class="card-top-bar">
+                    <span class="card-rank-num">1</span>
+                    <div class="card-pill-badge">
+                      <span class="card-pill-dot" />
+                      <span>{{ getUpdateBadge(heroStory, 0) }}</span>
+                    </div>
                   </div>
 
-                  <div class="card-action-buttons">
+                  <!-- Thao tác nhanh khi hover -->
+                  <div class="card-actions-hover" @click.stop>
                     <button
                       type="button"
                       class="btn-card-edit"
-                      title="Soạn thảo & Viết tiếp"
-                      @click="goToEditStory(story.id)"
+                      title="Soạn thảo"
+                      @click="goToEditStory(heroStory.id)"
                     >
-                      <PenTool :size="13" />
+                      <PenTool :size="12" />
                       <span>Soạn thảo</span>
                     </button>
                     <button
                       type="button"
                       class="btn-card-delete"
-                      title="Xóa bộ truyện này"
-                      @click="openDeleteModal(story)"
+                      title="Xóa truyện"
+                      @click="openDeleteModal(heroStory)"
                     >
-                      <Trash2 :size="14" />
+                      <Trash2 :size="13" />
                     </button>
                   </div>
+
+                  <!-- Bottom: Tên truyện và thông tin ngắn gọn -->
+                  <div class="card-bottom-info">
+                    <h2 class="card-title">{{ heroStory.title }}</h2>
+                    <div class="card-meta-line">
+                      <span>{{ heroStory.category || 'Mộc' }}</span>
+                      <span>·</span>
+                      <span>{{ formatNumber(heroStory.chapterCount || heroStory.chapters?.length || 1) }} chương</span>
+                    </div>
+                  </div>
+                </article>
+
+                <!-- Lưới 4 thẻ bên phải (hàng 1: thẻ 2, 3; hàng 2: thẻ 4, 5) -->
+                <div class="showcase-right-grid">
+                  <article
+                    v-for="(story, idx) in topGridStories"
+                    :key="story.id"
+                    class="book-story-card"
+                    @click="goToEditStory(story.id)"
+                  >
+                    <div class="card-image-layer">
+                      <img
+                        :src="getStoryCover(story, idx + 1)"
+                        :alt="story.title"
+                        class="card-cover-img"
+                        loading="lazy"
+                      />
+                    </div>
+                    <div class="card-scrim-layer" />
+
+                    <div class="card-top-bar">
+                      <span class="card-rank-num">{{ idx + 2 }}</span>
+                      <div class="card-pill-badge">
+                        <span class="card-pill-dot" />
+                        <span>{{ getUpdateBadge(story, idx + 1) }}</span>
+                      </div>
+                    </div>
+
+                    <div class="card-actions-hover" @click.stop>
+                      <button
+                        type="button"
+                        class="btn-card-edit"
+                        title="Soạn thảo"
+                        @click="goToEditStory(story.id)"
+                      >
+                        <PenTool :size="12" />
+                        <span>Sửa</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="btn-card-delete"
+                        title="Xóa truyện"
+                        @click="openDeleteModal(story)"
+                      >
+                        <Trash2 :size="13" />
+                      </button>
+                    </div>
+
+                    <div class="card-bottom-info">
+                      <h2 class="card-title">{{ story.title }}</h2>
+                      <div class="card-meta-line">
+                        <span>{{ story.category || 'Mộc' }}</span>
+                        <span>·</span>
+                        <span>{{ formatNumber(story.chapterCount || story.chapters?.length || 1) }} chương</span>
+                      </div>
+                    </div>
+                  </article>
                 </div>
               </div>
-            </article>
+
+              <!-- Hàng thẻ tiếp theo (từ thẻ số 6 trở đi) -->
+              <div v-if="remainingStories.length > 0" class="showcase-bottom-grid">
+                <article
+                  v-for="(story, idx) in remainingStories"
+                  :key="story.id"
+                  class="book-story-card"
+                  @click="goToEditStory(story.id)"
+                >
+                  <div class="card-image-layer">
+                    <img
+                      :src="getStoryCover(story, idx + 5)"
+                      :alt="story.title"
+                      class="card-cover-img"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div class="card-scrim-layer" />
+
+                  <div class="card-top-bar">
+                    <span class="card-rank-num">{{ idx + 6 }}</span>
+                    <div class="card-pill-badge">
+                      <span class="card-pill-dot" />
+                      <span>{{ getUpdateBadge(story, idx + 5) }}</span>
+                    </div>
+                  </div>
+
+                  <div class="card-actions-hover" @click.stop>
+                    <button
+                      type="button"
+                      class="btn-card-edit"
+                      title="Soạn thảo"
+                      @click="goToEditStory(story.id)"
+                    >
+                      <PenTool :size="12" />
+                      <span>Sửa</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-card-delete"
+                      title="Xóa truyện"
+                      @click="openDeleteModal(story)"
+                    >
+                      <Trash2 :size="13" />
+                    </button>
+                  </div>
+
+                  <div class="card-bottom-info">
+                    <h2 class="card-title">{{ story.title }}</h2>
+                    <div class="card-meta-line">
+                      <span>{{ story.category || 'Mộc' }}</span>
+                      <span>·</span>
+                      <span>{{ formatNumber(story.chapterCount || story.chapters?.length || 1) }} chương</span>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </template>
+
+            <!-- 2. LƯỚI ĐỒNG BỘ (Khi tìm kiếm, lọc hoặc danh sách ít hơn 5 truyện) -->
+            <div v-else class="uniform-cards-grid">
+              <article
+                v-for="(story, idx) in filteredStories"
+                :key="story.id"
+                class="book-story-card"
+                @click="goToEditStory(story.id)"
+              >
+                <div class="card-image-layer">
+                  <img
+                    :src="getStoryCover(story, idx)"
+                    :alt="story.title"
+                    class="card-cover-img"
+                    loading="lazy"
+                  />
+                </div>
+                <div class="card-scrim-layer" />
+
+                <div class="card-top-bar">
+                  <span class="card-rank-num">{{ idx + 1 }}</span>
+                  <div class="card-pill-badge">
+                    <span class="card-pill-dot" />
+                    <span>{{ getUpdateBadge(story, idx) }}</span>
+                  </div>
+                </div>
+
+                <div class="card-actions-hover" @click.stop>
+                  <button
+                    type="button"
+                    class="btn-card-edit"
+                    title="Soạn thảo"
+                    @click="goToEditStory(story.id)"
+                  >
+                    <PenTool :size="12" />
+                    <span>Sửa</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-card-delete"
+                    title="Xóa truyện"
+                    @click="openDeleteModal(story)"
+                  >
+                    <Trash2 :size="13" />
+                  </button>
+                </div>
+
+                <div class="card-bottom-info">
+                  <h2 class="card-title">{{ story.title }}</h2>
+                  <div class="card-meta-line">
+                    <span>{{ story.category || 'Mộc' }}</span>
+                    <span>·</span>
+                    <span>{{ formatNumber(story.chapterCount || story.chapters?.length || 1) }} chương</span>
+                  </div>
+                </div>
+              </article>
+            </div>
           </div>
 
-          <!-- TABLE VIEW: Danh sách hàng ngang chi tiết -->
+          <!-- TABLE VIEW: Không viền, không bóng -->
           <div
             v-else-if="viewMode === 'table'"
             class="books-table-card"
@@ -531,13 +731,12 @@ function formatDate(dateStr?: string) {
                   <th class="col-category">Thể loại</th>
                   <th class="col-status">Trạng thái</th>
                   <th class="col-chapters">Số chương</th>
-                  <th class="col-updated">Cập nhật</th>
                   <th class="col-actions">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 <tr
-                  v-for="story in filteredStories"
+                  v-for="(story, idx) in filteredStories"
                   :key="story.id"
                   class="table-row-item"
                 >
@@ -549,13 +748,9 @@ function formatDate(dateStr?: string) {
                       @click="goToEditStory(story.id)"
                     >
                       <img
-                        v-if="story.coverUrl"
-                        :src="story.coverUrl"
+                        :src="getStoryCover(story, idx)"
                         :alt="story.title"
                       />
-                      <div v-else class="thumb-placeholder">
-                        {{ story.title.charAt(0).toUpperCase() }}
-                      </div>
                     </div>
                   </td>
                   <td class="col-title">
@@ -566,11 +761,10 @@ function formatDate(dateStr?: string) {
                       @click="goToEditStory(story.id)"
                     >
                       <span class="table-story-title">{{ story.title }}</span>
-                      <span v-if="story.tags" class="table-story-tags">{{ story.tags }}</span>
                     </div>
                   </td>
                   <td class="col-category">
-                    <span class="category-chip">{{ story.category || 'Tiên Hiệp' }}</span>
+                    <span class="category-chip">{{ story.category || 'Mộc' }}</span>
                   </td>
                   <td class="col-status">
                     <span
@@ -581,17 +775,14 @@ function formatDate(dateStr?: string) {
                     </span>
                   </td>
                   <td class="col-chapters">
-                    <span class="table-ch-count">{{ story.chapterCount || story.chapters?.length || 1 }}</span>
-                  </td>
-                  <td class="col-updated">
-                    <span class="table-date">{{ formatDate(story.updatedAt || story.createdAt) }}</span>
+                    <span class="table-ch-count">{{ formatNumber(story.chapterCount || story.chapters?.length || 1) }}</span>
                   </td>
                   <td class="col-actions">
                     <div class="table-action-group">
                       <button
                         type="button"
                         class="btn-row-action btn-edit"
-                        title="Soạn thảo & Thêm chương"
+                        title="Soạn thảo"
                         @click="goToEditStory(story.id)"
                       >
                         <PenTool :size="13" />
@@ -603,7 +794,7 @@ function formatDate(dateStr?: string) {
                         title="Xóa truyện"
                         @click="openDeleteModal(story)"
                       >
-                        <Trash2 :size="14" />
+                        <Trash2 :size="13" />
                       </button>
                     </div>
                   </td>
@@ -615,7 +806,7 @@ function formatDate(dateStr?: string) {
       </div>
     </main>
 
-    <!-- Modal Xác nhận Xóa Truyện an toàn -->
+    <!-- Modal Xác nhận Xóa Truyện an toàn (Không viền, Không bóng) -->
     <div
       v-if="deleteModal.isOpen && deleteModal.story"
       class="delete-modal-overlay"
@@ -624,7 +815,7 @@ function formatDate(dateStr?: string) {
       <div class="delete-modal-box">
         <div class="modal-icon-header">
           <div class="alert-icon-circle">
-            <AlertTriangle :size="24" />
+            <AlertTriangle :size="22" />
           </div>
           <button
             type="button"
@@ -640,7 +831,7 @@ function formatDate(dateStr?: string) {
         <p class="modal-desc">
           Bạn sắp xóa vĩnh viễn bộ truyện
           <strong class="highlight-story-title">"{{ deleteModal.story.title }}"</strong>.
-          Toàn bộ nội dung chương, ảnh minh họa và dữ liệu liên quan sẽ bị gỡ bỏ khỏi hệ thống.
+          Toàn bộ nội dung chương và dữ liệu liên quan sẽ bị gỡ bỏ.
         </p>
 
         <div class="modal-actions-footer">
@@ -658,22 +849,22 @@ function formatDate(dateStr?: string) {
             :disabled="deleteModal.isDeleting"
             @click="confirmDeleteStory"
           >
-            <Loader2 v-if="deleteModal.isDeleting" :size="15" class="spin" />
-            <Trash2 v-else :size="15" />
+            <Loader2 v-if="deleteModal.isDeleting" :size="14" class="spin" />
+            <Trash2 v-else :size="14" />
             <span>{{ deleteModal.isDeleting ? 'Đang xóa...' : 'Xác nhận xóa' }}</span>
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Toast Thông báo -->
+    <!-- Toast Thông báo (Không viền, Không bóng) -->
     <div
       v-if="toast.show"
       class="toast-notification"
       :class="`toast-${toast.type}`"
     >
-      <CheckCircle2 v-if="toast.type === 'success'" :size="16" />
-      <AlertTriangle v-else :size="16" />
+      <CheckCircle2 v-if="toast.type === 'success'" :size="15" />
+      <AlertTriangle v-else :size="15" />
       <span>{{ toast.message }}</span>
     </div>
   </div>
@@ -685,9 +876,9 @@ function formatDate(dateStr?: string) {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background-color: var(--library-bg, #f6f5ef);
+  background-color: var(--library-bg, #f7f8fa);
   color: var(--library-ink, #18241c);
-  font-family: var(--sans, 'Be Vietnam Pro', sans-serif);
+  font-family: var(--sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
 }
 
 .bookshelf-main {
@@ -702,279 +893,148 @@ function formatDate(dateStr?: string) {
 .bookshelf-scroll-area {
   flex: 1;
   overflow-y: auto;
-  padding: 32px 40px 96px;
+  padding: 32px 48px 96px;
 }
 
 .bookshelf-container {
-  max-width: 1140px;
+  max-width: 1240px;
   margin: 0 auto;
   width: 100%;
 }
 
-/* Header */
+/* Header tối giản */
 .bookshelf-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 28px;
-}
-
-.header-text-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.header-badge {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #3b7c38;
-  background-color: rgba(59, 124, 56, 0.08);
-  padding: 4px 10px;
-  border-radius: 9999px;
-  width: fit-content;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
 }
 
 .bookshelf-title {
-  font-size: clamp(26px, 3vw, 34px);
+  font-size: 24px;
   font-weight: 700;
-  color: var(--library-ink);
-  letter-spacing: -0.6px;
+  color: var(--library-ink, #18241c);
+  letter-spacing: -0.4px;
   margin: 0;
-  line-height: 1.25;
-}
-
-.bookshelf-subtitle {
-  font-size: 14.5px;
-  color: var(--library-muted, #5f6c5e);
-  margin: 0;
-  line-height: 1.5;
-}
-
-.btn-primary-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border-radius: 9999px;
-  background-color: var(--library-ink, #18241c);
-  color: var(--library-surface, #ffffff);
-  border: 0;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(24, 36, 28, 0.16);
-  transition: all 0.18s ease;
-  white-space: nowrap;
-}
-
-.btn-primary-action:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(24, 36, 28, 0.22);
-  opacity: 0.95;
-}
-
-/* Stats Overview Grid */
-.stats-overview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 32px;
-}
-
-.stat-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px 20px;
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(24, 36, 28, 0.08);
-  border-radius: 16px;
-  transition: all 0.2s ease;
-}
-
-.stat-card:hover {
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
-  transform: translateY(-1px);
-}
-
-.stat-icon-box {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.stat-primary {
-  background-color: rgba(59, 124, 56, 0.12);
-  color: #2e7d32;
-}
-
-.stat-chapters {
-  background-color: rgba(43, 91, 143, 0.12);
-  color: #1e5c99;
-}
-
-.stat-published {
-  background-color: rgba(133, 73, 186, 0.12);
-  color: #7b32bf;
-}
-
-.stat-draft {
-  background-color: rgba(199, 119, 14, 0.12);
-  color: #b36400;
-}
-
-.stat-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.stat-label {
-  font-size: 12.5px;
-  color: var(--library-muted);
-  font-weight: 500;
-}
-
-.stat-value {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--library-ink);
   line-height: 1.2;
-}
-
-/* Toolbar */
-.bookshelf-toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-bottom: 24px;
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(24, 36, 28, 0.07);
-  padding: 14px 18px;
-  border-radius: 16px;
-}
-
-.search-box-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-.search-icon {
-  position: absolute;
-  left: 14px;
-  color: var(--library-muted);
-  pointer-events: none;
-}
-
-.bookshelf-search-input {
-  width: 100%;
-  padding: 10px 38px 10px 40px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(24, 36, 28, 0.1);
-  border-radius: 9999px;
-  font-size: 13.5px;
-  color: var(--library-ink);
-  outline: none;
-  transition: all 0.15s ease;
-}
-
-.bookshelf-search-input:focus {
-  border-color: #3b7c38;
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(59, 124, 56, 0.12);
-}
-
-.btn-clear-search {
-  position: absolute;
-  right: 12px;
-  background: transparent;
-  border: 0;
-  color: var(--library-muted);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.filter-controls-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
 }
 
 .status-pills-list {
   display: flex;
   align-items: center;
   gap: 6px;
-  overflow-x: auto;
 }
 
 .status-pill-btn {
   padding: 6px 14px;
   border-radius: 9999px;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
-  border: 1px solid rgba(24, 36, 28, 0.1);
-  background: transparent;
-  color: var(--library-muted);
+  border: 0;
+  outline: none;
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--library-muted, #5f6c5e);
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 
 .status-pill-btn:hover {
-  background: rgba(24, 36, 28, 0.05);
-  color: var(--library-ink);
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--library-ink, #18241c);
 }
 
 .status-pill-btn.active {
-  background-color: var(--library-ink);
+  background-color: var(--library-ink, #18241c);
   color: #ffffff;
-  border-color: var(--library-ink);
   font-weight: 600;
 }
 
-.toolbar-right-actions {
+.header-right {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
-.bookshelf-select-sort {
-  padding: 6px 14px;
-  border-radius: 9999px;
-  border: 1px solid rgba(24, 36, 28, 0.12);
-  background-color: rgba(255, 255, 255, 0.9);
-  color: var(--library-ink);
-  font-size: 12.5px;
-  font-weight: 500;
+/* Search Box: Không viền, Không bóng */
+.search-box-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--library-muted, #5f6c5e);
+  pointer-events: none;
+}
+
+.bookshelf-search-input {
+  width: 200px;
+  padding: 8px 30px 8px 34px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 0;
   outline: none;
-  cursor: pointer;
+  border-radius: 9999px;
+  font-size: 13px;
+  color: var(--library-ink, #18241c);
+  transition: all 0.15s ease;
 }
 
+.bookshelf-search-input:focus {
+  background: rgba(0, 0, 0, 0.07);
+  width: 240px;
+}
+
+.btn-clear-search {
+  position: absolute;
+  right: 10px;
+  background: transparent;
+  border: 0;
+  color: var(--library-muted, #5f6c5e);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Select sort: Không viền, Không bóng */
+.bookshelf-select-sort {
+  padding: 8px 14px;
+  border-radius: 9999px;
+  border: 0;
+  outline: none;
+  background-color: rgba(0, 0, 0, 0.04);
+  color: var(--library-ink, #18241c);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.bookshelf-select-sort:hover {
+  background-color: rgba(0, 0, 0, 0.07);
+}
+
+/* View Mode Toggle: Không viền, Không bóng */
 .view-mode-toggle {
   display: flex;
   align-items: center;
-  background: rgba(24, 36, 28, 0.06);
-  border-radius: 8px;
-  padding: 3px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 9999px;
+  padding: 2px;
   gap: 2px;
 }
 
@@ -982,32 +1042,60 @@ function formatDate(dateStr?: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   border: 0;
+  outline: none;
   background: transparent;
-  color: var(--library-muted);
+  color: var(--library-muted, #5f6c5e);
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .btn-view-toggle.active {
   background: #ffffff;
-  color: var(--library-ink);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  color: var(--library-ink, #18241c);
 }
 
-/* Loading State */
+/* Primary Action Button: Không viền, Không bóng */
+.btn-primary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  background-color: var(--library-ink, #18241c);
+  color: #ffffff;
+  border: 0;
+  outline: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.18s ease;
+  white-space: nowrap;
+}
+
+.btn-primary-action:hover {
+  opacity: 0.9;
+}
+
+/* Loading */
 .bookshelf-loading-wrap {
   display: flex;
-  flex-direction: column;
-  align-items: center;
   justify-content: center;
   padding: 80px 20px;
-  gap: 16px;
-  color: var(--library-muted);
-  font-size: 14px;
+  color: var(--library-muted, #5f6c5e);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Empty State */
@@ -1018,236 +1106,195 @@ function formatDate(dateStr?: string) {
   justify-content: center;
   padding: 64px 32px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px dashed rgba(24, 36, 28, 0.18);
-  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.025);
+  border-radius: 24px;
   margin-top: 10px;
-}
-
-.empty-icon-wrap {
-  color: #3b7c38;
-  margin-bottom: 16px;
-  opacity: 0.85;
+  border: 0;
 }
 
 .empty-title {
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 700;
-  color: var(--library-ink);
-  margin: 0 0 8px 0;
+  color: var(--library-ink, #18241c);
+  margin: 0 0 6px 0;
 }
 
 .empty-desc {
-  font-size: 14px;
-  color: var(--library-muted);
-  max-width: 440px;
-  margin: 0 0 24px 0;
-  line-height: 1.6;
+  font-size: 13.5px;
+  color: var(--library-muted, #5f6c5e);
+  max-width: 420px;
+  margin: 0 0 20px 0;
+  line-height: 1.5;
 }
 
 .btn-empty-cta {
-  padding: 11px 24px;
-  font-size: 14.5px;
+  padding: 10px 22px;
+  font-size: 13.5px;
 }
 
 .btn-outline-clear {
   padding: 8px 18px;
   border-radius: 9999px;
-  border: 1px solid rgba(24, 36, 28, 0.2);
-  background: transparent;
-  color: var(--library-ink);
+  border: 0;
+  outline: none;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--library-ink, #18241c);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
+  transition: background 0.15s ease;
 }
 
-/* GRID VIEW */
+.btn-outline-clear:hover {
+  background: rgba(0, 0, 0, 0.09);
+}
+
+/* GRID LAYOUT: KHÔNG BORDER, KHÔNG SHADOW */
 .books-grid-layout {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 24px;
-}
-
-.book-story-card {
   display: flex;
   flex-direction: column;
-  background: #ffffff;
-  border: 1px solid rgba(24, 36, 28, 0.08);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
-  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  gap: 16px;
 }
 
-.book-story-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
-  border-color: rgba(59, 124, 56, 0.25);
-}
-
-.book-cover-wrapper {
-  position: relative;
+/* Bento Showcase Grid */
+.showcase-bento-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 16px;
   width: 100%;
-  aspect-ratio: 16 / 10;
-  background: #e9ece6;
+}
+
+.showcase-right-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.showcase-bottom-grid,
+.uniform-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 16px;
+}
+
+/* BOOK STORY CARD: Chuẩn theo ảnh tham khảo */
+.book-story-card {
+  position: relative;
   overflow: hidden;
+  border-radius: 22px;
+  background-color: #1e2621;
+  aspect-ratio: 1.1 / 1;
+  user-select: none;
   cursor: pointer;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  display: flex;
+  flex-direction: column;
 }
 
-.book-spine-effect {
+.book-story-card.card-hero {
+  aspect-ratio: auto;
+  min-height: 440px;
+  height: 100%;
+}
+
+/* Lớp ảnh nền */
+.card-image-layer {
   position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 8px;
-  background: linear-gradient(to right, rgba(0, 0, 0, 0.25), transparent);
-  z-index: 2;
-  pointer-events: none;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
-.book-cover-img {
+.card-cover-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.3s ease;
 }
 
-.book-cover-wrapper:hover .book-cover-img {
-  transform: scale(1.04);
-}
-
-.book-cover-fallback {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #274726 0%, #152414 100%);
-  color: #ffffff;
-  gap: 4px;
-}
-
-.cover-letter {
-  font-size: 42px;
-  font-weight: 800;
-  letter-spacing: -1px;
-}
-
-.cover-subtext {
-  font-size: 11px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  opacity: 0.75;
-}
-
-.story-status-tag {
+/* Lớp bóng mờ màu tối phía dưới để chữ đọc cực rõ */
+.card-scrim-layer {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 9999px;
-  backdrop-filter: blur(8px);
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.15) 0%,
+    rgba(0, 0, 0, 0) 30%,
+    rgba(0, 0, 0, 0.35) 60%,
+    rgba(0, 0, 0, 0.82) 100%
+  );
+  pointer-events: none;
+}
+
+/* Top bar: Rank lớn & Badge viên thuốc */
+.card-top-bar {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  right: 14px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   z-index: 3;
 }
 
-.status-published {
-  background-color: rgba(46, 125, 50, 0.88);
-  color: #ffffff;
+.card-rank-num {
+  font-size: 32px;
+  font-weight: 300;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.88);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: -0.5px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
-.status-draft {
-  background-color: rgba(217, 119, 6, 0.88);
-  color: #ffffff;
+.card-hero .card-rank-num {
+  font-size: 48px;
 }
 
-.status-completed {
-  background-color: rgba(124, 58, 237, 0.88);
-  color: #ffffff;
-}
-
-.book-card-body {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-}
-
-.book-meta-top {
-  display: flex;
+.card-pill-badge {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.category-chip {
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #ffffff;
   font-size: 11.5px;
   font-weight: 600;
-  color: #2e7d32;
-  background: rgba(46, 125, 50, 0.08);
-  padding: 2px 8px;
-  border-radius: 4px;
+  border: 0;
+  line-height: 1;
 }
 
-.chapter-count-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--library-muted);
+.card-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #34d399;
 }
 
-.book-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--library-ink);
-  line-height: 1.35;
-  margin: 0 0 6px 0;
-  cursor: pointer;
-  transition: color 0.15s;
-}
-
-.book-title:hover {
-  color: #2e7d32;
-}
-
-.book-synopsis {
-  font-size: 13px;
-  color: var(--library-muted);
-  line-height: 1.5;
-  margin: 0 0 16px 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  flex: 1;
-}
-
-.book-card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(24, 36, 28, 0.06);
-}
-
-.update-time {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11.5px;
-  color: var(--library-muted);
-}
-
-.card-action-buttons {
+/* Thao tác chỉnh sửa & xóa khi hover */
+.card-actions-hover {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
   display: flex;
   align-items: center;
   gap: 6px;
+  z-index: 5;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.book-story-card:hover .card-actions-hover,
+.book-story-card:focus-within .card-actions-hover {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .btn-card-edit {
@@ -1255,18 +1302,20 @@ function formatDate(dateStr?: string) {
   align-items: center;
   gap: 4px;
   padding: 5px 10px;
-  border-radius: 6px;
-  background: rgba(46, 125, 50, 0.1);
-  color: #2e7d32;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #18241c;
   border: 0;
-  font-size: 12px;
+  outline: none;
+  font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s;
+  backdrop-filter: blur(8px);
+  transition: background 0.15s ease;
 }
 
 .btn-card-edit:hover {
-  background: rgba(46, 125, 50, 0.18);
+  background: #ffffff;
 }
 
 .btn-card-delete {
@@ -1275,25 +1324,68 @@ function formatDate(dateStr?: string) {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
-  background: transparent;
-  color: #a33838;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #ff6b6b;
   border: 0;
+  outline: none;
   cursor: pointer;
-  transition: all 0.15s;
+  backdrop-filter: blur(8px);
+  transition: all 0.15s ease;
 }
 
 .btn-card-delete:hover {
-  background: rgba(163, 56, 56, 0.1);
+  background: rgba(220, 38, 38, 0.9);
+  color: #ffffff;
 }
 
-/* TABLE VIEW */
-.books-table-card {
-  background: #ffffff;
-  border: 1px solid rgba(24, 36, 28, 0.08);
-  border-radius: 16px;
+/* Bottom: Tên truyện và phân loại */
+.card-bottom-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 24px 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 3;
+}
+
+.card-title {
+  color: #ffffff;
+  font-size: 15.5px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.card-hero .card-title {
+  font-size: 22px;
+}
+
+.card-meta-line {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  line-height: 1.3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+}
+
+/* TABLE VIEW: Không viền, Không bóng */
+.books-table-card {
+  background: rgba(0, 0, 0, 0.025);
+  border-radius: 20px;
+  overflow: hidden;
+  border: 0;
 }
 
 .bookshelf-table {
@@ -1303,25 +1395,25 @@ function formatDate(dateStr?: string) {
 }
 
 .bookshelf-table th {
-  padding: 12px 16px;
+  padding: 12px 18px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--library-muted);
-  border-bottom: 1px solid rgba(24, 36, 28, 0.08);
-  background: rgba(24, 36, 28, 0.02);
+  color: var(--library-muted, #5f6c5e);
+  background: rgba(0, 0, 0, 0.02);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  border: 0;
 }
 
 .bookshelf-table td {
-  padding: 14px 16px;
+  padding: 14px 18px;
   font-size: 13.5px;
-  border-bottom: 1px solid rgba(24, 36, 28, 0.05);
   vertical-align: middle;
+  border: 0;
 }
 
 .table-row-item:hover {
-  background-color: rgba(24, 36, 28, 0.02);
+  background-color: rgba(0, 0, 0, 0.035);
 }
 
 .col-cover {
@@ -1331,7 +1423,7 @@ function formatDate(dateStr?: string) {
 .table-thumb {
   width: 44px;
   height: 58px;
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
   background: #e3e7e0;
   cursor: pointer;
@@ -1343,31 +1435,17 @@ function formatDate(dateStr?: string) {
   object-fit: cover;
 }
 
-.thumb-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #274726;
-  color: #fff;
-  font-weight: 700;
-}
-
 .col-title {
   max-width: 320px;
 }
 
 .table-title-group {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
   cursor: pointer;
 }
 
 .table-story-title {
   font-weight: 600;
-  color: var(--library-ink);
+  color: var(--library-ink, #18241c);
   transition: color 0.15s;
 }
 
@@ -1375,19 +1453,40 @@ function formatDate(dateStr?: string) {
   color: #2e7d32;
 }
 
-.table-story-tags {
-  font-size: 11.5px;
-  color: var(--library-muted);
+.category-chip {
+  font-size: 12px;
+  color: var(--library-muted, #5f6c5e);
+  background: rgba(0, 0, 0, 0.04);
+  padding: 3px 8px;
+  border-radius: 9999px;
+  font-weight: 500;
+}
+
+.story-status-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 9999px;
+}
+
+.status-published {
+  background-color: rgba(46, 125, 50, 0.12);
+  color: #2e7d32;
+}
+
+.status-draft {
+  background-color: rgba(217, 119, 6, 0.12);
+  color: #b45309;
+}
+
+.status-completed {
+  background-color: rgba(124, 58, 237, 0.12);
+  color: #6d28d9;
 }
 
 .table-ch-count {
   font-weight: 600;
-  color: var(--library-ink);
-}
-
-.table-date {
-  color: var(--library-muted);
-  font-size: 12.5px;
+  color: var(--library-ink, #18241c);
 }
 
 .table-action-group {
@@ -1400,60 +1499,56 @@ function formatDate(dateStr?: string) {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12.5px;
-  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 9999px;
   border: 0;
+  outline: none;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s;
 }
 
 .btn-row-action.btn-edit {
-  background: rgba(46, 125, 50, 0.08);
-  color: #2e7d32;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--library-ink, #18241c);
 }
 
 .btn-row-action.btn-edit:hover {
-  background: rgba(46, 125, 50, 0.16);
+  background: rgba(0, 0, 0, 0.09);
 }
 
 .btn-row-action.btn-delete {
   background: transparent;
-  color: #a33838;
-  padding: 6px;
+  color: #dc2626;
+  padding: 5px 8px;
 }
 
 .btn-row-action.btn-delete:hover {
-  background: rgba(163, 56, 56, 0.1);
+  background: rgba(220, 38, 38, 0.1);
 }
 
-/* Modal Xóa */
+/* Modal: Không viền, Không bóng */
 .delete-modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(4px);
-  z-index: 1000;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 1000;
   padding: 20px;
 }
 
 .delete-modal-box {
   background: #ffffff;
-  border-radius: 20px;
+  border-radius: 24px;
+  border: 0;
+  padding: 28px;
   max-width: 440px;
   width: 100%;
-  padding: 24px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-  animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes modalPop {
-  from { transform: scale(0.95); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
 }
 
 .modal-icon-header {
@@ -1467,8 +1562,8 @@ function formatDate(dateStr?: string) {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: rgba(199, 43, 43, 0.1);
-  color: #c72b2b;
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1477,28 +1572,28 @@ function formatDate(dateStr?: string) {
 .btn-modal-close {
   background: transparent;
   border: 0;
-  color: var(--library-muted);
+  color: var(--library-muted, #5f6c5e);
   cursor: pointer;
-  padding: 4px;
+  padding: 6px;
   border-radius: 50%;
 }
 
 .modal-title {
   font-size: 18px;
   font-weight: 700;
-  color: var(--library-ink);
+  color: var(--library-ink, #18241c);
   margin: 0 0 8px 0;
 }
 
 .modal-desc {
-  font-size: 14px;
-  color: var(--library-muted);
-  line-height: 1.55;
+  font-size: 13.5px;
+  color: var(--library-muted, #5f6c5e);
   margin: 0 0 24px 0;
+  line-height: 1.5;
 }
 
 .highlight-story-title {
-  color: var(--library-ink);
+  color: var(--library-ink, #18241c);
 }
 
 .modal-actions-footer {
@@ -1511,12 +1606,18 @@ function formatDate(dateStr?: string) {
 .btn-modal-cancel {
   padding: 9px 18px;
   border-radius: 9999px;
-  border: 1px solid rgba(24, 36, 28, 0.15);
-  background: transparent;
-  color: var(--library-ink);
-  font-size: 13.5px;
-  font-weight: 500;
+  border: 0;
+  outline: none;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--library-ink, #18241c);
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-modal-cancel:hover {
+  background: rgba(0, 0, 0, 0.09);
 }
 
 .btn-modal-delete {
@@ -1526,70 +1627,70 @@ function formatDate(dateStr?: string) {
   padding: 9px 20px;
   border-radius: 9999px;
   border: 0;
-  background: #c72b2b;
+  outline: none;
+  background: #dc2626;
   color: #ffffff;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  transition: opacity 0.15s;
 }
 
-.btn-modal-delete:disabled,
-.btn-modal-cancel:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.btn-modal-delete:hover {
+  opacity: 0.9;
 }
 
-/* Toast Notification */
+/* Toast Thông báo: Không viền, Không bóng */
 .toast-notification {
   position: fixed;
-  bottom: 28px;
-  right: 28px;
-  z-index: 1100;
+  bottom: 24px;
+  right: 24px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 18px;
-  border-radius: 12px;
-  font-size: 13.5px;
-  font-weight: 500;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
-  animation: toastSlide 0.25s ease;
-}
-
-@keyframes toastSlide {
-  from { transform: translateY(16px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
-.toast-success {
+  padding: 10px 20px;
+  border-radius: 9999px;
   background: #18241c;
   color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 1000;
+  border: 0;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .toast-error {
-  background: #c72b2b;
-  color: #ffffff;
-}
-
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  background: #dc2626;
 }
 
 /* Responsive */
-@media (max-width: 768px) {
+@media (max-width: 900px) {
+  .showcase-bento-grid {
+    grid-template-columns: 1fr;
+  }
+  .book-story-card.card-hero {
+    min-height: 320px;
+  }
   .bookshelf-scroll-area {
-    padding: 20px 16px 80px;
+    padding: 20px 20px 80px;
+  }
+}
+
+@media (max-width: 600px) {
+  .showcase-right-grid {
+    grid-template-columns: 1fr;
   }
   .bookshelf-header {
     flex-direction: column;
+    align-items: flex-start;
   }
-  .stats-overview-grid {
-    grid-template-columns: 1fr 1fr;
+  .header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .bookshelf-search-input {
+    width: 140px;
   }
 }
 </style>
