@@ -24,6 +24,9 @@ const authStore = useAuthStore()
 const activeTab = ref<'home' | 'library' | 'reading'>('home')
 const isProfileActive = computed(() => route?.path === '/profile')
 const isEditorActive = computed(() => route?.path?.startsWith('/library/editor'))
+const isBookshelfActive = computed(() => route?.path === '/library/bookshelf' || route?.path === '/bookshelf')
+const isLibraryHomeActive = computed(() => route?.path === '/library' && !route?.query?.tab && !isEditorActive.value && !isProfileActive.value && !isBookshelfActive.value)
+const isReadingActive = computed(() => route?.path === '/library' && route?.query?.tab === 'reading')
 
 const user = computed(() => authStore.user)
 const userDisplayName = computed(() => user.value?.displayName || '')
@@ -66,8 +69,23 @@ onMounted(() => {
 
 function handleNav(tab: 'home' | 'library' | 'reading') {
   activeTab.value = tab
-  if (route.path !== '/library') {
-    router.push('/library')
+  if (tab === 'library') {
+    if (route.path !== '/library/bookshelf') {
+      router.push('/library/bookshelf')
+    }
+    return
+  }
+  if (tab === 'home') {
+    if (route.path !== '/library' || route.query.tab) {
+      router.push('/library')
+    }
+    return
+  }
+  if (tab === 'reading') {
+    if (route.path !== '/library' || route.query.tab !== 'reading') {
+      router.push({ path: '/library', query: { tab: 'reading' } })
+    }
+    return
   }
 }
 
@@ -102,48 +120,48 @@ async function handleLogout() {
       <button
         type="button"
         class="nav-item"
-        :class="{ active: activeTab === 'home' && !isProfileActive && !isEditorActive }"
+        :class="{ active: isLibraryHomeActive }"
         title="Tổng quan"
         @click="handleNav('home')"
       >
         <Home
           :size="20"
           :stroke-width="1.6"
-          :fill="activeTab === 'home' && !isProfileActive && !isEditorActive ? 'currentColor' : 'none'"
+          :fill="isLibraryHomeActive ? 'currentColor' : 'none'"
         />
-        <span v-if="(activeTab !== 'home' || isProfileActive || isEditorActive)" class="nav-label">Tổng quan</span>
+        <span v-if="!isLibraryHomeActive" class="nav-label">Tổng quan</span>
       </button>
 
       <!-- 2. Tủ sách cá nhân -->
       <button
         type="button"
         class="nav-item"
-        :class="{ active: activeTab === 'library' && !isProfileActive && !isEditorActive }"
+        :class="{ active: isBookshelfActive }"
         title="Tủ sách"
         @click="handleNav('library')"
       >
         <BookOpen
           :size="20"
           :stroke-width="1.6"
-          :fill="activeTab === 'library' && !isProfileActive && !isEditorActive ? 'currentColor' : 'none'"
+          :fill="isBookshelfActive ? 'currentColor' : 'none'"
         />
-        <span v-if="(activeTab !== 'library' || isProfileActive || isEditorActive)" class="nav-label">Tủ sách</span>
+        <span v-if="!isBookshelfActive" class="nav-label">Tủ sách</span>
       </button>
 
       <!-- 3. Đang đọc / Dấu trang -->
       <button
         type="button"
         class="nav-item"
-        :class="{ active: activeTab === 'reading' && !isProfileActive && !isEditorActive }"
+        :class="{ active: isReadingActive }"
         title="Đang đọc"
         @click="handleNav('reading')"
       >
         <Bookmark
           :size="20"
           :stroke-width="1.6"
-          :fill="activeTab === 'reading' && !isProfileActive && !isEditorActive ? 'currentColor' : 'none'"
+          :fill="isReadingActive ? 'currentColor' : 'none'"
         />
-        <span v-if="(activeTab !== 'reading' || isProfileActive || isEditorActive)" class="nav-label">Đang đọc</span>
+        <span v-if="!isReadingActive" class="nav-label">Đang đọc</span>
       </button>
 
       <!-- 4. Đăng truyện / Soạn thảo -->

@@ -1371,6 +1371,23 @@ onMounted(() => {
                 <Upload :size="17" />
                 <span>Thêm ảnh bìa truyện (hoặc kéo thả ảnh vào đây)</span>
               </div>
+
+              <!-- Dải thumbnail ảnh tinh tế có trong truyện để nhấp nhanh đổi ảnh bìa -->
+              <div v-if="storyGallery.length > 0" class="gallery-quick-strip">
+                <div class="strip-thumbnails">
+                  <div
+                    v-for="(imgUrl, idx) in storyGallery"
+                    :key="idx"
+                    class="content-img-thumb"
+                    :class="{ 'is-active-cover': storyData.coverUrl === imgUrl }"
+                    :title="storyData.coverUrl === imgUrl ? 'Ảnh bìa hiện tại' : 'Nhấp để đặt làm ảnh bìa truyện'"
+                    @click="setAsCover(imgUrl)"
+                  >
+                    <img :src="imgUrl" alt="Thumbnail" />
+                    <span v-if="storyData.coverUrl === imgUrl" class="cover-active-badge">✓</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- Tiêu đề truyện lớn, không viền, không card -->

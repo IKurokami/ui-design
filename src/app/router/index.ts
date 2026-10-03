@@ -13,8 +13,15 @@ export const router = createRouter({
       path: '/library',
       name: 'library',
       component: () => import('../../features/library/pages/LibraryPage.vue'),
-      meta: { title: 'Tủ sách cá nhân', layout: 'dashboard', requiresAuth: true },
+      meta: { title: 'Thư viện', layout: 'dashboard', requiresAuth: true },
     },
+    {
+      path: '/library/bookshelf',
+      name: 'bookshelf',
+      component: () => import('../../features/library/pages/BookshelfPage.vue'),
+      meta: { title: 'Tủ sách của tôi', layout: 'dashboard', requiresAuth: true },
+    },
+    { path: '/bookshelf', redirect: '/library/bookshelf' },
     {
       path: '/profile',
       name: 'profile',

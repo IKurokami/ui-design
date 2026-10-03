@@ -1,7 +1,8 @@
 /* Containers stay fully transparent above the ambient canvas. Only individual
    controls use low-alpha fills and backdrop blur; no borders or shadows. */
 .library-layout,
-.studio-layout {
+.studio-layout,
+.bookshelf-layout {
   --library-surface: #ffffff;
   --library-accent: #435a41;
   --library-ink: #18241c;
@@ -13,7 +14,8 @@
 
 @supports (color: contrast-color(white)) {
   .library-layout,
-  .studio-layout {
+  .studio-layout,
+  .bookshelf-layout {
     --library-ink: contrast-color(var(--library-surface));
   }
 }

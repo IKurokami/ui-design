@@ -54,4 +54,5 @@ export interface Story {
   createdAt?: string
   updatedAt?: string
   chapters?: Chapter[]
+  chapterCount?: number
 }
