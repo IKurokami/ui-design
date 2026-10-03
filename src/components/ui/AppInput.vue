@@ -8,12 +8,12 @@ const visible = ref(false)
 </script>
 <template>
   <div :class="$style.field">
-    <label :for="id" data-flip-text="label">{{ label }}</label>
+    <label :for="id" data-motion-text="label">{{ label }}</label>
     <div :class="[$style.control, error && $style.invalid]">
       <Mail v-if="icon === 'mail'" :size="18" aria-hidden="true" />
       <LockKeyhole v-else-if="icon === 'lock'" :size="18" aria-hidden="true" />
       <UserRound v-else-if="icon === 'user'" :size="18" aria-hidden="true" />
-      <input data-flip-text="placeholder" :id="id" v-model="model" :name="id" :type="type === 'password' && visible ? 'text' : type" :placeholder="placeholder" :autocomplete="autocomplete" :disabled="disabled" :aria-invalid="!!error" :aria-describedby="error ? `${id}-error` : undefined" @blur="$emit('blur')" @input="$emit('input')" />
+      <input data-motion-text="placeholder" :id="id" v-model="model" :name="id" :type="type === 'password' && visible ? 'text' : type" :placeholder="placeholder" :autocomplete="autocomplete" :disabled="disabled" :aria-invalid="!!error" :aria-describedby="error ? `${id}-error` : undefined" @blur="$emit('blur')" @input="$emit('input')" />
       <button v-if="type === 'password'" type="button" :disabled="disabled" :class="$style.reveal" :aria-label="visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'" :aria-pressed="visible" @click="visible = !visible">
         <EyeOff v-if="visible" :size="18" /><Eye v-else :size="18" />
       </button>

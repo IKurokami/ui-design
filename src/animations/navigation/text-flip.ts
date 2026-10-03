@@ -6,12 +6,12 @@ gsap.registerPlugin(ScrambleTextPlugin)
 interface TextSnapshot { text: string; visible: boolean }
 export type FlipTextState = Map<string, TextSnapshot>
 interface TextLayer { element: HTMLSpanElement; text: string }
-const textSelector = '[data-flip-text]'
+const textSelector = '[data-motion-text], [data-flip-text]'
 function markers(target: HTMLElement) {
   return [...(target.matches(textSelector) ? [target] : []), ...target.querySelectorAll<HTMLElement>(textSelector)]
 }
 function key(target: HTMLElement, marker: HTMLElement) {
-  return target.dataset.flipId + ':' + marker.dataset.flipText
+  return JSON.stringify([target.dataset.flipId, marker.dataset.motionText ?? marker.dataset.flipText])
 }
 /** Store labels/placeholder strings only. Never capture an input's value. */
 export function captureFlipText(targets: HTMLElement[]): FlipTextState {

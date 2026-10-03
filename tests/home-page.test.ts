@@ -9,7 +9,7 @@ import { createPrismaticSurface } from '../src/features/home/prismatic-surface'
 vi.mock('../src/features/home/prismatic-surface', () => ({
   createPrismaticSurface: vi.fn(() => ({ phase: 0, render: vi.fn(), resize: vi.fn(), dispose: vi.fn() })),
 }))
-vi.mock('../src/animations/navigation/transitions', () => ({ animateStack: vi.fn(async () => {}), captureAuthFlip: vi.fn(), settleScreens: vi.fn() }))
+vi.mock('../src/animations/navigation/transitions', () => ({ animateStack: vi.fn(async () => {}), captureMotion: vi.fn(), settleScreens: vi.fn() }))
 let unmount: (() => void) | undefined
 beforeEach(() => {
   window.history.replaceState(null, '', '/')

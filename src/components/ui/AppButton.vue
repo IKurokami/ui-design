@@ -5,7 +5,7 @@ withDefaults(defineProps<{ loading?: boolean; disabled?: boolean; type?: 'button
 <template>
   <button :type="type" :class="$style.button" :disabled="disabled || loading" :aria-busy="loading">
     <LoaderCircle v-if="loading" :class="$style.spinner" :size="18" aria-hidden="true" />
-    <span data-flip-text="label"><slot /></span>
+    <span data-motion-text="label"><slot /></span>
     <ArrowRight v-if="arrow && !loading" :size="18" aria-hidden="true" />
   </button>
 </template>

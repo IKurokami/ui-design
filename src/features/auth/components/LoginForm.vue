@@ -20,15 +20,15 @@ const { values, errors, loading, message, submit, updateField } = useAuthForm(
 </script>
 <template>
   <form class="auth-form login-form" novalidate @submit.prevent="submit">
-    <AppInput data-auth-flip data-flip-id="auth-identity" id="login-identity" v-model="values.identity" label="Email hoặc tên đăng nhập" autocomplete="username" placeholder="Nhập email hoặc tên đăng nhập" icon="mail" :error="errors.identity" :disabled="loading" @input="updateField('identity')" />
-    <AppInput data-auth-flip data-flip-id="auth-password" id="login-password" v-model="values.password" label="Mật khẩu" type="password" autocomplete="current-password" placeholder="Nhập mật khẩu của bạn" icon="lock" :error="errors.password" :disabled="loading" @input="updateField('password')" />
-    <div class="form-options" data-auth-enter>
+    <AppInput data-motion-key="auth-identity" id="login-identity" v-model="values.identity" label="Email hoặc tên đăng nhập" autocomplete="username" placeholder="Nhập email hoặc tên đăng nhập" icon="mail" :error="errors.identity" :disabled="loading" @input="updateField('identity')" />
+    <AppInput data-motion-key="auth-password" id="login-password" v-model="values.password" label="Mật khẩu" type="password" autocomplete="current-password" placeholder="Nhập mật khẩu của bạn" icon="lock" :error="errors.password" :disabled="loading" @input="updateField('password')" />
+    <div class="form-options" data-motion>
       <label class="checkbox-label"><input v-model="values.remember" type="checkbox" :disabled="loading" /> <span>Ghi nhớ đăng nhập</span></label>
       <button type="button" class="text-link" :disabled="loading" @click="resetDialog?.open()">Quên mật khẩu?</button>
     </div>
-    <p v-if="message" class="form-message" data-auth-enter role="alert">{{ message }}</p>
-    <p v-if="success" class="success-message" data-auth-enter role="status">{{ success }}</p>
-    <AppButton data-auth-flip data-flip-id="auth-submit" type="submit" :loading="loading">{{ loading ? 'Đang đăng nhập…' : 'Đăng nhập' }}</AppButton>
+    <p v-if="message" class="form-message" data-motion role="alert">{{ message }}</p>
+    <p v-if="success" class="success-message" data-motion role="status">{{ success }}</p>
+    <AppButton data-motion-key="auth-submit" type="submit" :loading="loading">{{ loading ? 'Đang đăng nhập…' : 'Đăng nhập' }}</AppButton>
   </form>
   <PasswordResetDialog ref="resetDialog" />
 </template>

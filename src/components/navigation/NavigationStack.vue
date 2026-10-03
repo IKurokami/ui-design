@@ -3,13 +3,14 @@ import { computed, nextTick, onBeforeUnmount, provide, ref, shallowRef } from 'v
 import { useRouter } from 'vue-router'
 import { useEventListener, useResizeObserver } from '@vueuse/core'
 import { AnimationManager } from '../../animations/core/animation-manager'
-import { animateStack, captureAuthFlip, settleScreens } from '../../animations/navigation/transitions'
+import { animateStack, captureMotion, settleScreens } from '../../animations/navigation/transitions'
 import { ScrollRestorationManager } from '../../animations/scroll/scroll-restoration'
 import { HISTORY_KEY, initialSnapshot, nextSnapshot, readSnapshot, transitionDirection, type StackSnapshot, type ScreenEntry } from './stack-model'
 import { navigationKey } from './context'
 import { scrollRestorationKey } from '../../animations/composables/useScrollRestoration'
 const router = useRouter()
 const rootPath = '/login'
+const stackLayout = router.currentRoute.value.meta.layout
 let current = initialSnapshot(router.currentRoute.value.fullPath, rootPath, window.history.state?.[HISTORY_KEY])
 window.history.replaceState({ ...window.history.state, [HISTORY_KEY]: current }, '')
 const rendered = shallowRef<ScreenEntry[]>(current.chain)
@@ -52,7 +53,8 @@ async function reconcile(target: StackSnapshot) {
       const newId = next.chain.at(-1)!.id
       if (oldId === newId) { current = next; continue }
       scroll.capture(oldId)
-      const flipState = captureAuthFlip(elements.get(oldId))
+      const oldScreen = elements.get(oldId)
+      const flipState = oldScreen ? captureMotion(oldScreen) : undefined
       const focused = document.activeElement
       if (focused instanceof HTMLElement && elements.get(oldId)?.contains(focused)) {
         focusMemory.set(oldId, focused); focused.blur()
@@ -65,7 +67,12 @@ async function reconcile(target: StackSnapshot) {
       scroll.restore(newId)
       const outgoing = elements.get(oldId)
       const incoming = elements.get(newId)
-      if (outgoing && incoming) await animateStack(manager, outgoing, incoming, direction, false, flipState)
+      try {
+        if (outgoing && incoming) await animateStack(manager, outgoing, incoming, direction, false, flipState)
+      } catch (error) {
+        // A visual effect must not strand the route or keep the form locked.
+        console.error('[motion] Screen animation failed', error)
+      } finally { flipState?.release() }
       if (disposed) break
       current = next
       rendered.value = next.chain
@@ -84,7 +91,7 @@ async function reconcile(target: StackSnapshot) {
 }
 const removeHook = router.afterEach((to, _from, failure) => {
   if (failure) { navigationRequested = false; return }
-  if (to.meta.layout === 'home') { manager.finish(); navigationRequested = false; return }
+  if (to.meta.layout !== stackLayout) { manager.finish(); navigationRequested = false; return }
   let target = readSnapshot(window.history.state?.[HISTORY_KEY])
   if (!target || target.chain.at(-1)?.path !== to.fullPath) {
     target = nextSnapshot(current, to.fullPath, rootPath)

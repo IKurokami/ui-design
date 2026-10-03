@@ -5,8 +5,8 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', name: 'home', component: () => import('../../features/home/pages/HomePage.vue'), meta: { title: 'Khám phá', layout: 'home' } },
-    { path: '/login', name: 'login', component: LoginPage, meta: { title: 'Đăng nhập' } },
-    { path: '/register', name: 'register', component: RegisterPage, meta: { title: 'Tạo tài khoản' } },
+    { path: '/login', name: 'login', component: LoginPage, meta: { title: 'Đăng nhập', layout: 'auth' } },
+    { path: '/register', name: 'register', component: RegisterPage, meta: { title: 'Tạo tài khoản', layout: 'auth' } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
   scrollBehavior(to, _from, savedPosition) {

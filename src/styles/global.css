@@ -111,7 +111,7 @@ h1:focus { outline:none; }
 }
 
 /* GSAP owns transforms during a Flip; CSS must not interpolate the same property. */
-.is-auth-flipping { transition:none !important; }
+.is-motion-flipping { transition:none !important; }
 .site-header { justify-content:space-between; }
 .flip-text-clip { position:absolute; overflow:hidden; pointer-events:none; display:block; }
 .flip-text-layer { position:absolute; inset:0; display:block; white-space:nowrap; }

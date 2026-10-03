@@ -7,8 +7,8 @@ const navigation = useStackNavigation()
 <template>
   <div class="auth-page register-page">
     <div class="form-inner">
-      <button class="back-link" data-auth-enter type="button" :disabled="navigation.busy.value" @click="navigation.back()"><ArrowLeft :size="16" /> Đăng nhập</button>
-      <h1 data-screen-title data-flip-text="title" data-auth-flip data-flip-id="auth-title" tabindex="-1">Tạo tài khoản</h1>
+      <button class="back-link" data-motion type="button" :disabled="navigation.busy.value" @click="navigation.back()"><ArrowLeft :size="16" /> Đăng nhập</button>
+      <h1 data-screen-title data-motion-text="title" data-motion-key="auth-title" tabindex="-1">Tạo tài khoản</h1>
       <RegisterForm />
     </div>
   </div>

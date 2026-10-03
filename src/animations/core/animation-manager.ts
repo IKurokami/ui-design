@@ -21,7 +21,12 @@ export class AnimationManager {
       })
       this.timeline = timeline
       this.complete = complete
-      try { build(timeline); timeline.play() }
+      try {
+        build(timeline)
+        timeline.play()
+        // Empty plans and reduced-motion list updates must resolve synchronously.
+        if (timeline.totalDuration() === 0) { timeline.totalProgress(1); complete() }
+      }
       catch (error) {
         timeline.kill(); settled = true
         if (this.timeline === timeline) { this.timeline = undefined; this.complete = undefined }

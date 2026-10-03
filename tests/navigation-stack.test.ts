@@ -8,7 +8,7 @@ import NavigationStack from '../src/components/navigation/NavigationStack.vue'
 import { useStackNavigation } from '../src/components/navigation/context'
 vi.mock('../src/animations/navigation/transitions', () => ({
   animateStack: vi.fn(async () => {}),
-  captureAuthFlip: vi.fn(),
+  captureMotion: vi.fn(),
   settleScreens: vi.fn(),
 }))
 const Login = defineComponent({
@@ -66,6 +66,17 @@ describe('mounted navigation stack', () => {
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/login')
     expect(wrapper.findAll('article')).toHaveLength(1)
+  })
+  it('commits the next route and unlocks the screen if the animation fails', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(animateStack).mockRejectedValueOnce(new Error('animation failed'))
+    const { wrapper, router } = await setup()
+    await wrapper.find('button').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/register')
+    expect(wrapper.get('section').attributes('aria-busy')).toBe('false')
+    expect(wrapper.findAll('article').at(-1)!.attributes('aria-hidden')).toBe('false')
+    expect(report).toHaveBeenCalledOnce()
+    report.mockRestore()
   })
   it('prevents repeated pushes and synchronizes browser Forward', async () => {
     const { wrapper, router } = await setup()
