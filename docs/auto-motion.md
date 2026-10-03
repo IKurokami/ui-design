@@ -137,6 +137,9 @@ Các attribute bổ sung:
 | `data-motion-role="..."` | Vai trò để suy identity trong scope |
 | `data-motion-ignore` | Bỏ qua cả subtree |
 | `data-motion-text="label"` | Opt in morph chữ/placeholder khi phần tử cha được ghép |
+| `data-motion-nested` | Cho phần con có identity chạy riêng dù cha đã có marker; dùng cùng `nested: true` |
+| `data-motion-clip` | Giữ giới hạn scroll/clip của vùng này cả khi `unclip: true` |
+| `data-motion-overlay-target` | Trong list, chuyển phần tử bằng ghost độc lập với vùng scroll |
 
 Marker trên card sở hữu toàn bộ subtree: không animate lại title/ảnh bên trong card. Muốn animate các phần con riêng, đặt marker lên từng phần con và để card không được chọn. Engine bỏ qua subtree `hidden`, `display:none`, `visibility:hidden`, `aria-hidden="true"`, `inert` và overlay của chính nó. Capture root có thể `inert` khi controller đang khóa tương tác; các item bên trong vẫn đo được.
 
@@ -185,18 +188,30 @@ try {
 | `stagger` | `0.035` giây | Khoảng cách xuất hiện giữa item mới |
 | `reduced` | `false` | Bỏ animation; giải phóng snapshot ngay |
 | `onPlan` | Không có | Xem các cặp đã ghép và diagnostics trước khi animate |
+| `collapseTo` | Không có | Key đích hoặc map key/prefix → key đích để thu phần tử biến mất; key chưa khai báo chọn đích gần nhất trong map |
+| `foldGroup`, `foldStagger` | Không có, `0` | Thu lần lượt nhóm key; giới hạn tổng độ trễ để hoàn tất trước layout |
+| `unclip`, `nested` | `false` | Cho phép đi qua container và bù transform của cha; `data-motion-clip` vẫn giữ giới hạn |
 
 `useAutoMotion` luôn dùng `list`; thêm `deep` (mặc định `true`), `onError`, và `reduced` dạng boolean hoặc getter. Khi không truyền `reduced`, nó đọc `prefers-reduced-motion` ở mỗi cập nhật. `finish()` hoàn tất animation hiện tại. Khi resize, cập nhật mới hoặc unmount, composable hoàn tất/dọn animation và snapshot. Các thay đổi trong cùng render batch giữ snapshot đầu tiên và chỉ animate DOM mới nhất.
 
 Thời gian text morph hiện dùng nhịp riêng trong `text-flip.ts`, nên một transition opt in text có thể dài hơn `duration` bạn truyền. `duration` không phải deadline tổng của timeline khi còn stagger hoặc text morph.
 
+## Logo khi chuyển trang
+
+`App.vue` giữ một logo xuyên suốt Home, Auth và Library, bên ngoài các page đang trượt. Class theo layout đặt logo ở header hoặc vị trí trong sidebar; sidebar chỉ giữ một khoảng trống, không tạo logo thứ hai. `usePageMotion` theo dõi layout logo riêng với hướng trượt page, nên Auth ↔ Library vẫn chạy FLIP dù cả hai là trang bên trong. Snapshot gồm khung logo, icon, chữ và dấu chấm; `nested: true` bù transform của cha để các phần không nhảy kích thước khi đổi layout. Màu chạy trong cùng FLIP và cùng duration/ease với page.
+
+Khi đổi hướng giữa chừng, pause timeline trước khi kill để `Flip.getState()` không ép timeline cũ tới điểm cuối. Logo giữ hành vi luôn animate của navigation stack hiện có, kể cả khi system báo `prefers-reduced-motion`. Auth nằm trên Home/Library: rời Auth sẽ kéo Auth ra và để lộ trang nền, cả với `router.push` và `router.replace`; quay vào Auth sẽ đẩy Auth vào trên trang nền. Việc ghép phần tử, ghost overlay và cleanup vẫn thuộc engine `captureMotion`/`animateMotion` hiện có.
+
 ## Lifecycle, giới hạn và kiểm tra
+
+Header Library dùng `useAutoMotion` trên các control thật, với `power3.inOut` trong 0.56 giây, không bounce. Tiêu đề/thống kê thu vào search; nhãn chế độ thu vào icon tương ứng. Badge đang nhìn thấy lần lượt thu vào “Tất cả thể loại”, hoàn tất trước FLIP chính. Scroll viewport giữ nguyên overflow; badge đi qua ghost overlay riêng. Khi expand, chỉ badge nằm trọn trong viewport có ghost chuyển động; badge ở mép fade trong vùng clip, badge ngoài vùng không tạo ghost. Capture giữ phần giao với viewport để badge bị che không đột ngột hiện ra khi collapse. CSS transition trong header được tắt tạm bằng `is-motion-layout-active`, và cleanup xóa lớp này khi hoàn tất hoặc unmount.
 
 - Snapshot và animation chỉ thuộc một root/controller, không có cache key toàn cục hoặc trạng thái form trong storage.
 - Exit của list dùng bản sao thị giác vì Vue đã bỏ node khỏi DOM. Bản sao `inert`, `aria-hidden`, không nhận pointer; xóa ID/handler và giá trị control. Không gắn lại control cũ vào form thật.
 - Cleanup khôi phục inline style vốn có, identity và text layer, kể cả setup lỗi, hoàn tất sớm hoặc unmount. Animation plan rỗng và reduced motion vẫn resolve Promise.
 - CSS animation/transition không nên đồng thời điều khiển transform của target; `.is-motion-flipping` tắt CSS transition trong FLIP. Không chạy thêm `TransitionGroup` hoặc View Transition API trên cùng item.
 - Ghost không tái tạo WebGL, video đang phát hay pseudo-element hoàn hảo. Với nội dung trực tiếp như vậy, ưu tiên FLIP DOM thật hoặc chuyển động cả page.
+- Vue gọi unmount của component trước khi parent hoàn tất leave transition. Với tài nguyên render còn hiển thị như background WebGL, dùng `disposeAfterRemoval(element, dispose)` trong `onBeforeUnmount` để giữ render đến khi DOM thực sự bị gỡ. Helper theo dõi việc gỡ bằng MutationObserver, tự disconnect rồi dispose một lần; không dùng timeout theo duration. `PrismaticBackdrop` áp dụng cơ chế này và kill clock thay vì revert phase về 0.
 - Virtualized list chỉ có thể animate những node đang được render. Scope nên giới hạn vào vùng thực sự cần animation; ghost capture có chi phí sao chép computed style theo số descendants.
 
 Debug việc ghép bằng `matchMotion(snapshot, root)` hoặc `onPlan: plan => console.log(plan)`. Nếu không thấy cặp chung, kiểm tra scope chain, key duy nhất, eligibility và thời điểm capture có trước DOM update hay không. Nếu chuyển động đi sai vị trí, kiểm tra parent có transform/scroll/layout đổi giữa lúc đo và animate; hoàn tất animation trước khi đổi viewport.

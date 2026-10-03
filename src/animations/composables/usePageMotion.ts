@@ -6,26 +6,37 @@ import { animateMotion, captureMotion, type MotionSnapshot } from '../auto/motio
 gsap.registerPlugin(Flip)
 const pageMotion = { duration: 0.62, ease: 'power3.inOut', depthX: -4, depthScale: 0.95 }
 const pageProps = 'transform,transformOrigin,opacity,visibility,pointerEvents,zIndex,willChange,borderRadius,boxShadow'
-export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: ComputedRef<boolean>, direction?: Ref<'push' | 'pop'>) {
+export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: ComputedRef<boolean>, direction?: Ref<'push' | 'pop'>, brandLayout?: ComputedRef<string>) {
   const tweens = new Map<Element, gsap.core.Tween>()
   const sharedManager = new AnimationManager()
   let pending: MotionSnapshot | undefined
   let logo: gsap.core.Timeline | undefined
+  let logoTargets: Element[] = []
   let revision = 0
-  watch(isInnerPage, async () => {
+  watch(() => brandLayout?.value ?? isInnerPage.value, async () => {
     if (!brand.value) return
-    logo?.kill()
-    const state = Flip.getState(brand.value)
-    const color = getComputedStyle(brand.value).color
+    // Pause before killing: Flip keeps a reference to its timeline on targets.
+    // A killed but unpaused timeline can still be forced to completion by getState.
+    logo?.pause().kill()
+    logoTargets = [brand.value, ...brand.value.querySelectorAll('.brand-icon, .brand-name, .brand-name > span')]
+    // getState completes existing Flips by default. Stop them without seeking to
+    // their end so a reversal starts from the logo's current visible position.
+    const targets = logoTargets.length === 1 ? brand.value : logoTargets
+    const state = Flip.getState(targets, { props: 'color' })
     const current = ++revision
     await nextTick()
     if (current !== revision || !brand.value) return
-    gsap.set(brand.value, { clearProps: 'transform,color' })
-    const targetColor = getComputedStyle(brand.value).color
-    logo = gsap.timeline({ onComplete: () => { if (brand.value) gsap.set(brand.value, { clearProps: 'transform,color' }) } })
-    logo.add(Flip.from(state, { targets: brand.value, scale: true, duration: pageMotion.duration, ease: pageMotion.ease }), 0)
-    logo.fromTo(brand.value, { color }, { color: targetColor, duration: 0.22, ease: 'power1.out' }, 0)
-  })
+    gsap.set(targets, { clearProps: 'transform,color' })
+    // Nested FLIP compensates for parent scaling, preserving each glyph and icon
+    // at the starting frame even when gap, alignment and font size change.
+    logo = Flip.from(state, {
+      targets, nested: true, scale: true, props: 'color',
+      duration: pageMotion.duration, ease: pageMotion.ease,
+      onComplete: () => {
+        if (current === revision) gsap.set(targets, { clearProps: 'transform,color' })
+      },
+    })
+  }, { flush: 'pre' })
   function reset(element: Element) {
     tweens.get(element)?.kill()
     tweens.delete(element)
@@ -76,6 +87,6 @@ export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: 
       },
     }))
   }
-  onBeforeUnmount(() => { revision++; logo?.kill(); sharedManager.dispose(); pending?.release(); tweens.forEach(tween => tween.kill()); tweens.clear() })
+  onBeforeUnmount(() => { revision++; logo?.pause().kill(); sharedManager.dispose(); pending?.release(); tweens.forEach(tween => tween.kill()); tweens.clear() })
   return { enter, leave, cancel }
 }

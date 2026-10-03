@@ -27,7 +27,11 @@ const container = ref<HTMLElement>()
 let pending: StackSnapshot | undefined
 let disposed = false
 let navigationRequested = false
-const currentTitle = computed(() => router.currentRoute.value.path === '/register' ? 'Tạo tài khoản' : 'Đăng nhập')
+const currentTitle = computed(() => {
+  if (router.currentRoute.value.path === '/register') return 'Tạo tài khoản'
+  if (router.currentRoute.value.path.includes('reset-password')) return 'Đặt lại mật khẩu'
+  return 'Đăng nhập'
+})
 
 function bindScreen(id: string, element: unknown) {
   if (element instanceof HTMLElement) {

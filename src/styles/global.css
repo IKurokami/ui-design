@@ -66,8 +66,6 @@ h1:focus { outline:none; }
 .info-dialog h2 { font-family:var(--serif); font-size:29px; font-weight:400; line-height:1.5; margin:8px 0 20px; }
 .info-dialog>p { font-size:12px; line-height:1.95; color:#707b66; margin-bottom:14px; }
 .dialog-close { position:absolute; top:16px; right:16px; display:grid; place-items:center; width:30px; height:30px; border:0; border-radius:50%; background:#e9ede2; color:var(--muted); cursor:pointer; }
-.dialog-symbol { color:var(--green); margin-bottom:20px; width:50px; height:50px; display:grid; place-items:center; border-radius:13px; background:#e6ebdf; }
-.reset-dialog .auth-form { margin-top:22px; }
 @media (min-width:1500px) { .app-shell { padding-top:12px; padding-bottom:12px; } }
 @media (max-height:790px) and (min-width:681px) {
   .site-header { height:82px; }
@@ -112,6 +110,7 @@ h1:focus { outline:none; }
 
 /* GSAP owns transforms during a Flip; CSS must not interpolate the same property. */
 .is-motion-flipping { transition:none !important; }
+.is-motion-layout-active, .is-motion-layout-active * { transition:none !important; }
 .site-header { justify-content:space-between; }
 .flip-text-clip { position:absolute; overflow:hidden; pointer-events:none; display:block; }
 .flip-text-layer { position:absolute; inset:0; display:block; white-space:nowrap; }
@@ -122,17 +121,25 @@ h1:focus { outline:none; }
 .flip-text-entropy { opacity:.65; }
 /* Keep the brand node mounted while the route content is replaced. */
 .app-brand { position:absolute; z-index:30; left:max(64px,calc((100vw - 1440px)/2 + 64px)); top:31px; height:35px; }
+.app-brand .brand-icon { display:flex; align-items:center; flex-shrink:0; }
+.app-brand .brand-name>span { display:inline-block; }
 .auth-brand-space { width:100px; height:35px; }
 .app-brand-home { left:max(56px,calc((100vw - 1280px)/2 + 56px)); top:36px; color:#f0eee6; }
 .app-brand-home .brand-name { font-size:34px; }
 .app-brand-home .brand-name>span { color:#d3c6a7; }
-.app-brand-home>svg { width:25px; height:25px; }
+.app-brand-home .brand-icon>svg { width:25px; height:25px; }
 @media(min-width:1500px) { .app-brand:not(.app-brand-home) { top:43px; } }
 @media(max-height:790px) and (min-width:681px) { .app-brand:not(.app-brand-home) { top:25px; } }
 @media(max-width:1100px) { .app-brand { left:35px; } .app-brand-home { left:36px; } }
 @media(max-width:900px) { .app-brand:not(.app-brand-home) { left:25px; } }
-@media(max-width:680px) { .app-brand { left:24px; top:25px; } .app-brand-home { top:27px; } .app-brand-home .brand-name { font-size:31px; } .app-brand-home>svg { width:21px; height:21px; } }
+@media(max-width:680px) { .app-brand { left:24px; top:25px; } .app-brand-home { top:27px; } .app-brand-home .brand-name { font-size:31px; } .app-brand-home .brand-icon>svg { width:21px; height:21px; } }
 .page-stage { position:relative; min-height:100dvh; overflow:clip; background:var(--paper); } .page-stage-home { background:#090c09; }
 .page-viewport { display:grid; isolation:isolate; }
+.page-content { position:relative; min-height:100dvh; }
 .page-screen { grid-area:1 / 1; min-width:0; align-self:start; overflow:clip; background:var(--paper); }
 .page-screen-home { background:#090c09; }
+
+/* The same logo settles into the Library sidebar, above sliding page screens. */
+.app-brand.app-brand-library { left:0; top:20px; width:76px; height:18px; justify-content:center; gap:5px; color:var(--sidebar-ink,#303b2f); }
+.app-brand-library .brand-name { font-size:19px; letter-spacing:-.6px; margin-top:-2px; }
+.app-brand.app-brand-library .brand-icon>svg { width:18px; height:18px; }

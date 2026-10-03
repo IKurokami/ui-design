@@ -1,0 +1,56 @@
+/* One page surface; interface elements remain transparent above the ambient canvas. */
+.library-layout {
+  --library-surface: #ffffff;
+  --library-accent: #435a41;
+  --library-ink: #18241c;
+  --library-muted: color-mix(in oklab, var(--library-ink) 72%, var(--library-surface));
+  --library-control-ink: var(--library-ink);
+  --library-badge-ink: var(--library-ink);
+  --library-border: color-mix(in oklab, var(--library-ink) 15%, transparent);
+  --library-danger-ink: #631616;
+}
+
+@supports (color: contrast-color(white)) {
+  .library-layout {
+    --library-ink: contrast-color(var(--library-surface));
+  }
+}
+
+/* Text colors derive from the white page surface, without opaque backing panels. */
+.library-layout .deck-info {
+  background: transparent;
+  color: var(--library-ink);
+  padding: 9px 12px;
+  border-radius: 12px;
+}
+
+.library-layout .library-header {
+  background: transparent;
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.library-layout .empty-state {
+  background: transparent;
+  border-radius: 20px;
+}
+
+@media (prefers-contrast: more) {
+  .library-layout {
+    --library-muted: var(--library-ink);
+    --library-border: var(--library-ink);
+  }
+}
+
+@media (forced-colors: active) {
+  .library-layout .ambient-backdrop-container { display: none; }
+  .library-layout {
+    --library-surface: Canvas;
+    --library-ink: CanvasText;
+    --library-muted: CanvasText;
+    --library-accent: Highlight;
+    --library-control-ink: CanvasText;
+    --library-badge-ink: CanvasText;
+  }
+}

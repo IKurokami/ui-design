@@ -3,7 +3,9 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createWebHistory, createRouter } from 'vue-router'
 import { createPinia } from 'pinia'
 import gsap from 'gsap'
+import { Flip } from 'gsap/Flip'
 import App from '../src/app/App.vue'
+import { useAuthStore } from '../src/stores/auth.store'
 import { router as productionRouter } from '../src/app/router'
 import { createPrismaticSurface } from '../src/features/home/prismatic-surface'
 vi.mock('../src/features/home/prismatic-surface', () => ({
@@ -22,13 +24,103 @@ afterEach(() => { unmount?.(); unmount = undefined; document.body.innerHTML = ''
 async function home(realTransition = false) {
   const router = createRouter({ history: createWebHistory(), routes: productionRouter.options.routes })
   await router.push('/'); await router.isReady()
-  const wrapper = mount(App, { attachTo: document.body, global: { plugins: [router, createPinia()], stubs: realTransition ? { transition: false } : {} } })
+  const pinia = createPinia()
+  const wrapper = mount(App, { attachTo: document.body, global: { plugins: [router, pinia], stubs: realTransition ? { transition: false } : {} } })
   unmount = () => { wrapper.unmount(); router.options.history.destroy() }
   await flushPromises()
   await vi.waitFor(() => expect(wrapper.find('.landing-page').exists()).toBe(true))
-  return { wrapper, router }
+  return { wrapper, router, pinia }
 }
 describe('guest landing and auth routing', () => {
+  it('moves the same logo between Home, Auth and the Library sidebar, including rapid reversals', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    const { wrapper, router, pinia } = await home(true)
+    const brand = wrapper.get('.app-brand').element
+    const flip = vi.spyOn(Flip, 'from')
+    const auth = useAuthStore(pinia)
+    await router.push('/login'); await flushPromises()
+    expect(wrapper.get('.app-brand').element).toBe(brand)
+    auth.setSession({ user: { id: '1', displayName: 'Reader', email: 'reader@example.com' } })
+    await router.push('/library'); await flushPromises()
+    await vi.waitFor(() => expect(wrapper.find('.library-sidebar').exists()).toBe(true))
+    await flushPromises()
+    expect(wrapper.get('.app-brand-library').element).toBe(brand)
+    expect(wrapper.findAll('.app-brand')).toHaveLength(1)
+    expect(wrapper.find('.library-sidebar .brand').exists()).toBe(false)
+    const logoFlips = () => flip.mock.calls.filter(call => call[1]?.targets === brand
+      || Array.isArray(call[1]?.targets) && (call[1]!.targets as Element[]).includes(brand))
+    expect(logoFlips()).toHaveLength(2)
+    expect(logoFlips()[1]![1]!.targets).toEqual([brand, ...brand.querySelectorAll('.brand-icon, .brand-name, .brand-name > span')])
+
+    auth.clearSession()
+    await router.push('/login'); await flushPromises()
+    expect(wrapper.get('.app-brand').element).toBe(brand)
+    expect(wrapper.get('.app-brand').classes()).not.toContain('app-brand-library')
+    await router.push('/'); await flushPromises()
+    expect(wrapper.get('.app-brand-home').element).toBe(brand)
+    expect(logoFlips()).toHaveLength(4)
+    wrapper.findAll('.page-screen').forEach(page => gsap.getTweensOf(page.element).forEach(tween => tween.progress(1)))
+    await flushPromises()
+    expect(wrapper.findAll('.page-screen')).toHaveLength(1)
+    unmount?.(); unmount = undefined
+    expect(gsap.getTweensOf(brand)).toHaveLength(0)
+  })
+
+  it.each(['push', 'replace'] as const)('reveals Library beneath the sliding Auth page after login via %s', async method => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    const { wrapper, router, pinia } = await home(true)
+    await router.push('/login'); await flushPromises()
+    wrapper.findAll('.page-screen').forEach(page => gsap.getTweensOf(page.element).forEach(tween => tween.progress(1)))
+    await flushPromises()
+    const outgoing = wrapper.get('[data-page="auth"]').element as HTMLElement
+    useAuthStore(pinia).setSession({ user: { id: '1', displayName: 'Reader', email: 'reader@example.com' } })
+    await router[method]('/library'); await flushPromises()
+    await vi.waitFor(() => expect(wrapper.find('[data-page="library"]').exists()).toBe(true))
+    const incoming = wrapper.get('[data-page="library"]').element as HTMLElement
+    expect(outgoing.style.zIndex).toBe('2')
+    expect(incoming.style.zIndex).toBe('1')
+    const leaving = gsap.getTweensOf(outgoing)[0]!
+    const entering = gsap.getTweensOf(incoming)[0]!
+    leaving.pause().progress(0.5)
+    entering.pause().progress(0.5)
+    expect(Number(gsap.getProperty(outgoing, 'xPercent'))).toBeGreaterThan(0)
+    expect(Number(gsap.getProperty(outgoing, 'xPercent'))).toBeLessThan(100)
+    expect(Number(gsap.getProperty(incoming, 'xPercent'))).toBeGreaterThan(-4)
+    expect(Number(gsap.getProperty(incoming, 'xPercent'))).toBeLessThan(0)
+    expect(Number(gsap.getProperty(incoming, 'scaleX'))).toBeGreaterThan(0.95)
+    expect(Number(gsap.getProperty(incoming, 'scaleX'))).toBeLessThan(1)
+    expect(outgoing.isConnected).toBe(true)
+    leaving.progress(1); entering.progress(1)
+    await flushPromises()
+    expect(outgoing.isConnected).toBe(false)
+    expect(incoming.style.transform).toBe('')
+  })
+
+  it('keeps the animated background running at its current phase until the outgoing Home is removed', async () => {
+    const { wrapper, router } = await home(true)
+    const homeScreen = wrapper.get('[data-page="home"]').element
+    Object.defineProperty(wrapper.get('.landing-orb').element, 'naturalWidth', { value: 1672 })
+    await wrapper.get('.landing-orb').trigger('load')
+    const surface = vi.mocked(createPrismaticSurface).mock.results.at(-1)!.value!
+    const seam = gsap.getTweensOf(surface)[0]!
+    seam.pause().totalTime(8)
+    const phase = surface.phase
+    const frameCount = vi.mocked(surface.render).mock.calls.length
+    await router.push('/login'); await flushPromises()
+    const leaving = gsap.getTweensOf(homeScreen)[0]!
+    leaving.pause().progress(0.4)
+    expect(homeScreen.isConnected).toBe(true)
+    expect(surface.phase).toBeCloseTo(phase)
+    expect(surface.dispose).not.toHaveBeenCalled()
+    expect(gsap.getTweensOf(surface)).toContain(seam)
+    seam.totalTime(8.2)
+    expect(surface.phase).toBeGreaterThan(phase)
+    expect(vi.mocked(surface.render).mock.calls.length).toBeGreaterThan(frameCount)
+    leaving.progress(1); await flushPromises()
+    expect(homeScreen.isConnected).toBe(false)
+    expect(surface.dispose).toHaveBeenCalledOnce()
+    expect(gsap.getTweensOf(surface)).toHaveLength(0)
+  })
   it.each(['/login', '/register'])('shows the landing after leaving %s with the real Vue transition', async path => {
     const { wrapper, router } = await home(true)
     const homeScreen = wrapper.get('[data-page="home"]').element
@@ -73,6 +165,10 @@ describe('guest landing and auth routing', () => {
   })
   it('finishes on the correct page when reversing navigation halfway through the slide', async () => {
     const { wrapper, router } = await home(true)
+    Object.defineProperty(wrapper.get('.landing-orb').element, 'naturalWidth', { value: 1672 })
+    await wrapper.get('.landing-orb').trigger('load')
+    const outgoingSurface = vi.mocked(createPrismaticSurface).mock.results.at(-1)!.value!
+    gsap.getTweensOf(outgoingSurface)[0]!.pause().totalTime(8)
     await router.push('/login'); await flushPromises()
     wrapper.findAll('.page-screen').forEach(page => gsap.getTweensOf(page.element).forEach(tween => tween.pause().progress(0.4)))
     await wrapper.get('.app-brand').trigger('click'); await flushPromises()
@@ -86,6 +182,15 @@ describe('guest landing and auth routing', () => {
     expect(screen.style.zIndex).toBe('')
     expect(gsap.getTweensOf(screen)).toHaveLength(0)
     expect(wrapper.find('.app-shell').exists()).toBe(false)
+    expect(outgoingSurface.phase).toBeGreaterThan(0)
+    expect(outgoingSurface.dispose).toHaveBeenCalledOnce()
+    expect(gsap.getTweensOf(outgoingSurface)).toHaveLength(0)
+    Object.defineProperty(wrapper.get('.landing-orb').element, 'naturalWidth', { value: 1672 })
+    await wrapper.get('.landing-orb').trigger('load')
+    const incomingSurface = vi.mocked(createPrismaticSurface).mock.results.at(-1)!.value!
+    expect(incomingSurface).not.toBe(outgoingSurface)
+    expect(incomingSurface.dispose).not.toHaveBeenCalled()
+    expect(gsap.getTweensOf(incomingSurface)).toHaveLength(1)
   })
   it('preserves the brand node and form navigation, removing auth panels immediately on return to /', async () => {
     const { wrapper, router } = await home()

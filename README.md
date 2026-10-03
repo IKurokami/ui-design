@@ -35,6 +35,8 @@ Mở http://127.0.0.1:5173. Các URL: `/login`, `/register`.
 
 ## Kết nối backend
 
+Dialog quên mật khẩu có animation mở/đóng và chuyển bước; đóng dialog giữ nguyên email, lỗi và tiến trình, kể cả request đang chạy. Dialog được mount một lần tại App; trạng thái ở Pinia trong bộ nhớ ứng dụng. Xem [luồng và lifecycle quên mật khẩu](docs/password-reset.md).
+
 Chưa có tài liệu API nên chưa định nghĩa endpoint, request DTO hoặc response DTO. Các kiểu `LoginValues`, `RegisterValues`, `AuthSession` là hợp đồng nội bộ của frontend, không phải schema backend.
 
 Cài adapter bằng `configureAuthAdapter(adapter)` trước khi mount ứng dụng. Adapter thực tế chuyển đổi các giá trị frontend thành DTO của API, sử dụng transport `createApiClient(baseUrl)` nếu phù hợp, rồi chuẩn hóa response thành AuthSession. Adapter cũng quyết định session/remember-me theo chính sách backend, truyền AbortSignal và chuẩn hóa lỗi an toàn bằng ApiError.

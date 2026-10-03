@@ -6,7 +6,7 @@ import { assignFlipIds, discoverMotion, type MotionDiagnostic, type MotionTarget
 import { createMotionGhost, createMotionOverlay, placeGhost } from './ghosts'
 
 gsap.registerPlugin(Flip)
-export interface CapturedTarget extends MotionTarget { rect: DOMRect; ghost?: HTMLElement }
+export interface CapturedTarget extends MotionTarget { rect: DOMRect; visibleRect: DOMRect; ghost?: HTMLElement }
 export interface MotionSnapshot {
   root: HTMLElement
   targets: CapturedTarget[]
@@ -29,13 +29,56 @@ export interface MotionOptions {
   ease?: string
   stagger?: number
   onPlan?: (plan: MotionPlan) => void
+  /** Exact keys or key prefixes mapped to their nearest retained control. */
+  collapseTo?: string | Record<string, string>
+  /** Sequential folds in this key group, bounded to finish before the layout. */
+  foldGroup?: string
+  foldStagger?: number
+  /** Let targets cross clipping ancestors within this root during a layout Flip. */
+  unclip?: boolean
+  /** Compensate parent transforms for explicitly opted-in nested targets. */
+  nested?: boolean
+  /** False animates actual dimensions and reveals content without stretching it. */
+  scale?: boolean
+}
+
+/** Preserve scroll viewports; only the portion already on screen may fly out. */
+function visibleRect(element: HTMLElement, rect: DOMRect, root: HTMLElement): DOMRect {
+  let left = rect.left, top = rect.top, right = rect.right, bottom = rect.bottom
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+    if (parent.hasAttribute('data-motion-clip')) {
+      const clip = parent.getBoundingClientRect()
+      if (clip.width && clip.height) {
+        left = Math.max(left, clip.left); top = Math.max(top, clip.top)
+        right = Math.min(right, clip.right); bottom = Math.min(bottom, clip.bottom)
+      }
+    }
+    if (parent === root) break
+  }
+  return new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top))
+}
+function fullyVisible(rect: DOMRect, visible: DOMRect) {
+  return visible.width > 0 && visible.height > 0 && Math.abs(rect.width - visible.width) < 1 && Math.abs(rect.height - visible.height) < 1
+}
+function clipGhost(ghost: HTMLElement, rect: DOMRect, visible: DOMRect) {
+  ghost.style.clipPath = `inset(${Math.max(0, visible.top - rect.top)}px ${Math.max(0, rect.right - visible.right)}px ${Math.max(0, rect.bottom - visible.bottom)}px ${Math.max(0, visible.left - rect.left)}px)`
+}
+function foldedClip(rect: DOMRect, visible = rect) {
+  const centerX = visible.left + visible.width / 2 - rect.left
+  const centerY = visible.top + visible.height / 2 - rect.top
+  return `inset(${Math.max(0, centerY - 2)}px ${Math.max(0, rect.width - centerX - 4)}px ${Math.max(0, rect.height - centerY - 2)}px ${Math.max(0, centerX - 4)}px round 4px)`
 }
 
 export function captureMotion(root: HTMLElement, options: { ghosts?: boolean } = {}): MotionSnapshot {
   const discovery = discoverMotion(root)
   const releaseIds = assignFlipIds(discovery.targets)
   try {
-    const targets = discovery.targets.map(target => ({ ...target, rect: target.element.getBoundingClientRect(), ghost: options.ghosts ? createMotionGhost(target.element) : undefined }))
+    const targets = discovery.targets.map(target => {
+      const rect = target.element.getBoundingClientRect()
+      const visible = visibleRect(target.element, rect, root)
+      const outsideStrip = target.element.hasAttribute('data-motion-overlay-target') && (!visible.width || !visible.height)
+      return { ...target, rect, visibleRect: visible, ghost: options.ghosts && !outsideStrip ? createMotionGhost(target.element) : undefined }
+    })
     return {
       root, targets, diagnostics: discovery.diagnostics,
       layout: Flip.getState(targets.filter(target => target.key).map(target => target.element)),
@@ -75,6 +118,7 @@ export function animateMotion(manager: AnimationManager, before: MotionSnapshot,
   const mode = options.mode ?? 'page'
   const duration = options.duration ?? motion.duration
   const ease = options.ease ?? motion.ease
+  const useScale = options.scale ?? true
   const offset = options.direction === 'pop' ? -14 : 14
   if (mode === 'page') gsap.set(incoming, { autoAlpha: 1, xPercent: 0, scale: 1 })
   const plan = matchMotion(before, incoming)
@@ -82,13 +126,55 @@ export function animateMotion(manager: AnimationManager, before: MotionSnapshot,
   const restoreIds = assignFlipIds(afterTargets)
   const restoreStyles = saveStyles([...before.targets.map(target => target.element), ...afterTargets.map(target => target.element)])
   const backgrounds = [before.root.style.backgroundColor, incoming.style.backgroundColor]
+  // Measure final geometry before Flip applies inverse transforms.
+  const afterRects = new Map(afterTargets.map(target => [target.element, target.element.getBoundingClientRect()]))
+  const afterVisible = new Map(afterTargets.map(target => [target.element, visibleRect(target.element, afterRects.get(target.element)!, incoming)]))
+  const anchors = [...incoming.querySelectorAll<HTMLElement>('[data-motion-key]')].map(element => ({
+    key: element.dataset.motionKey!, rect: element.getBoundingClientRect(),
+  })).filter(anchor => anchor.rect.width && anchor.rect.height)
+  function anchorFor(target: MotionTarget, rect: DOMRect) {
+    const mapping = options.collapseTo
+    if (!mapping) return undefined
+    const key = target.element.dataset.motionKey ?? ''
+    const mapped = typeof mapping === 'string' ? mapping : Object.keys(mapping)
+      .sort((a, b) => b.length - a.length).find(prefix => key === prefix || (prefix.endsWith(':') && key.startsWith(prefix)))
+    const anchorKey = typeof mapping === 'string' ? mapped : mapped ? mapping[mapped] : undefined
+    if (anchorKey) return anchors.find(anchor => anchor.key === anchorKey)?.rect
+    const candidates = anchors.filter(anchor => Object.values(mapping).includes(anchor.key))
+    const distance = (anchor: typeof anchors[number]) => Math.hypot(anchor.rect.left + anchor.rect.width / 2 - rect.left - rect.width / 2, anchor.rect.top + anchor.rect.height / 2 - rect.top - rect.height / 2)
+    return candidates.sort((a, b) => distance(a) - distance(b))[0]?.rect
+  }
+  const unclipped = new Map<HTMLElement, { props: { property: string; value: string; priority: string }[]; scrollLeft: number; scrollTop: number }>()
+  if (options.unclip) {
+    for (const target of afterTargets) {
+      for (let parent = target.element.parentElement; parent; parent = parent.parentElement) {
+        const style = getComputedStyle(parent)
+        if (!parent.hasAttribute('data-motion-clip') && !unclipped.has(parent) && /hidden|clip|auto|scroll/.test(style.overflow + style.overflowX + style.overflowY)) {
+          const props = ['overflow', 'overflow-x', 'overflow-y'].map(property => ({
+            property, value: parent.style.getPropertyValue(property), priority: parent.style.getPropertyPriority(property),
+          }))
+          unclipped.set(parent, { props, scrollLeft: parent.scrollLeft, scrollTop: parent.scrollTop })
+          props.forEach(({ property }) => parent.style.setProperty(property, 'visible', 'important'))
+        }
+        if (parent === incoming) break
+      }
+    }
+  }
   let overlay: HTMLElement | undefined
   let text: ReturnType<typeof prepareFlipText> | undefined
+  const hadLayoutClass = incoming.classList.contains('is-motion-layout-active')
   const cleanup = () => {
     text?.cleanup()
     overlay?.remove()
     afterTargets.forEach(target => target.element.classList.remove('is-motion-flipping'))
+    if (!hadLayoutClass) incoming.classList.remove('is-motion-layout-active')
     restoreStyles()
+    unclipped.forEach((saved, element) => {
+      saved.props.forEach(({ property }) => element.style.removeProperty(property))
+      saved.props.forEach(({ property, value, priority }) => { if (value) element.style.setProperty(property, value, priority) })
+      element.scrollLeft = saved.scrollLeft
+      element.scrollTop = saved.scrollTop
+    })
     if (mode === 'page') {
       gsap.set(before.root, { autoAlpha: 0, xPercent: 0, scale: 1 })
       gsap.set(incoming, { autoAlpha: 1, xPercent: 0, scale: 1 })
@@ -105,6 +191,7 @@ export function animateMotion(manager: AnimationManager, before: MotionSnapshot,
       return
     }
     const stagger = options.stagger ?? 0.035
+    if (mode === 'list' && options.unclip) incoming.classList.add('is-motion-layout-active')
     if (mode === 'overlay') {
       // An independent visual layer avoids compounding a parent page's slide/scale.
       for (const pair of plan.shared) {
@@ -112,7 +199,7 @@ export function animateMotion(manager: AnimationManager, before: MotionSnapshot,
         const from = pair.before.rect
         const to = pair.after.element.getBoundingClientRect()
         if (!ghost || !from.width || !from.height || !to.width || !to.height || pair.after.element.matches('input, textarea, select, canvas, video') || pair.after.element.querySelector('input, textarea, select, canvas, video')) continue
-        overlay ??= createMotionOverlay()
+        overlay ??= createMotionOverlay(incoming)
         placeGhost(overlay, ghost, from)
         const nextGhost = createMotionGhost(pair.after.element)
         gsap.set([pair.before.element, pair.after.element], { visibility: 'hidden' })
@@ -125,7 +212,8 @@ export function animateMotion(manager: AnimationManager, before: MotionSnapshot,
       }
       return
     }
-    const shared = plan.shared.map(pair => pair.after.element)
+    const overlayPairs = mode === 'list' ? plan.shared.filter(pair => pair.after.element.hasAttribute('data-motion-overlay-target')) : []
+    const shared = plan.shared.filter(pair => !overlayPairs.includes(pair)).map(pair => pair.after.element)
     const swapAt = mode === 'page' ? 0.1 : 0
     if (mode === 'page') {
       gsap.set([before.root, incoming], { xPercent: 0, scale: 1, backgroundColor: 'transparent' })
@@ -135,22 +223,96 @@ export function animateMotion(manager: AnimationManager, before: MotionSnapshot,
     } else {
       // Vue has already removed departing list nodes. Their captured visuals can leave
       // without putting detached controls back into the live DOM/layout.
+      const folds = plan.leaving.filter(target => target.element.dataset.motionKey?.startsWith(options.foldGroup ?? '\0') && target.visibleRect.width && target.visibleRect.height)
+      const step = Math.min(options.foldStagger ?? 0, duration * (useScale ? 0.24 : 0.18) / Math.max(1, folds.length - 1))
       for (const target of plan.leaving) {
-        if (!target.ghost || !target.rect.width || !target.rect.height) continue
-        overlay ??= createMotionOverlay()
+        if (!target.ghost || !target.rect.width || !target.rect.height || !target.visibleRect.width || !target.visibleRect.height) continue
+        overlay ??= createMotionOverlay(incoming)
         placeGhost(overlay, target.ghost, target.rect)
-        timeline.to(target.ghost, { autoAlpha: 0, y: -offset, scale: 0.96, duration: Math.min(duration, 0.25), ease: 'power1.in' }, 0)
+        clipGhost(target.ghost, target.rect, target.visibleRect)
+        const anchorRect = anchorFor(target, target.rect)
+        const start = Math.max(0, folds.indexOf(target)) * step
+        if (anchorRect?.width && anchorRect.height) {
+          const foldDuration = duration * (useScale ? 0.65 : 0.78)
+          gsap.set(target.ghost, { willChange: 'transform, opacity', ...(useScale ? { transformOrigin: '50% 50%' } : {}) })
+          timeline.to(target.ghost, {
+            x: anchorRect.left + anchorRect.width / 2 - target.rect.left - target.rect.width / 2,
+            y: anchorRect.top + anchorRect.height / 2 - target.rect.top - target.rect.height / 2,
+            ...(useScale
+              ? { scale: Math.min(anchorRect.width / target.rect.width, anchorRect.height / target.rect.height, 0.5) * 0.6 }
+              : { clipPath: foldedClip(target.rect, target.visibleRect) }),
+            duration: foldDuration, ease: useScale ? 'power2.inOut' : ease,
+          }, start)
+          const fadeAt = useScale ? 0.7 : 0.3
+          timeline.to(target.ghost, { autoAlpha: 0, duration: foldDuration * (1 - fadeAt), ease: 'sine.inOut' }, start + foldDuration * fadeAt)
+        } else {
+          timeline.to(target.ghost, { autoAlpha: 0, y: -offset, ...(useScale ? { scale: 0.96 } : {}), duration: Math.min(duration, 0.25), ease: 'power1.in' }, 0)
+        }
+      }
+      // Retained badges move above the clipped scroll strip, while the strip
+      // itself keeps its final width and overflow throughout the transition.
+      for (const pair of overlayPairs) {
+        const from = pair.before.rect
+        const to = afterRects.get(pair.after.element)!
+        const destination = afterVisible.get(pair.after.element)!
+        if (!fullyVisible(from, pair.before.visibleRect) || !fullyVisible(to, destination) || !pair.before.ghost) {
+          if (destination.width && destination.height) timeline.fromTo(pair.after.element, { autoAlpha: 0 }, { autoAlpha: 1, duration: duration * 0.8, ease: 'power2.out' }, 0)
+          continue
+        }
+        overlay ??= createMotionOverlay(incoming)
+        const ghost = pair.before.ghost
+        const nextGhost = createMotionGhost(pair.after.element)
+        placeGhost(overlay, ghost, from)
+        placeGhost(overlay, nextGhost, from)
+        gsap.set(pair.after.element, { visibility: 'hidden' })
+        gsap.set([ghost, nextGhost], { willChange: 'transform, opacity' })
+        gsap.set(nextGhost, { autoAlpha: 0, ...(useScale
+          ? { width: to.width, height: to.height, scaleX: from.width / to.width, scaleY: from.height / to.height }
+          : { width: from.width, height: from.height }) })
+        const size = useScale ? { scaleX: to.width / from.width, scaleY: to.height / from.height } : { width: to.width, height: to.height }
+        timeline.to(ghost, { x: to.left - from.left, y: to.top - from.top, ...size, autoAlpha: 0, duration, ease }, 0)
+        timeline.to(nextGhost, { x: to.left - from.left, y: to.top - from.top, ...(useScale ? { scaleX: 1, scaleY: 1 } : size), autoAlpha: 1, duration, ease }, 0)
       }
     }
     if (shared.length) {
       text = prepareFlipText(before.text, shared)
-      timeline.add(Flip.from(before.layout, { targets: shared, scale: true, duration, ease, prune: true, toggleClass: 'is-motion-flipping' }), swapAt)
+      timeline.add(Flip.from(before.layout, { targets: shared, scale: useScale, nested: options.nested ?? false, duration, ease, prune: true, toggleClass: 'is-motion-flipping' }), swapAt)
       text.animate(timeline, swapAt + 0.06)
     }
-    if (plan.entering.length) timeline.fromTo(plan.entering.map(target => target.element),
-      { autoAlpha: 0, y: offset },
-      { autoAlpha: 1, y: 0, duration: Math.min(duration, 0.3), stagger, ease: 'power2.out', immediateRender: true },
-      mode === 'page' ? swapAt + 0.16 : 0,
-    )
+    if (plan.entering.length) {
+      if (mode === 'list' && options.collapseTo) {
+        const unfolds = plan.entering.filter(target => target.element.dataset.motionKey?.startsWith(options.foldGroup ?? '\0') && fullyVisible(afterRects.get(target.element)!, afterVisible.get(target.element)!))
+        const step = Math.min(options.foldStagger ?? 0, duration * 0.15 / Math.max(1, unfolds.length - 1))
+        for (const target of plan.entering) {
+          const rect = afterRects.get(target.element)!
+          const anchorRect = anchorFor(target, rect)
+          const visible = afterVisible.get(target.element)!
+          if (!visible.width || !visible.height) continue
+          if (!anchorRect || (target.element.hasAttribute('data-motion-overlay-target') && !fullyVisible(rect, visible))) {
+            // Boundary badges fade inside their viewport. Hidden badges never
+            // create floating copies outside the scroll strip.
+            timeline.fromTo(target.element, { autoAlpha: 0 }, { autoAlpha: 1, duration: duration * 0.8, ease: 'power2.out' }, 0)
+            continue
+          }
+          let visual = target.element
+          if (target.element.hasAttribute('data-motion-overlay-target') || !useScale) {
+            overlay ??= createMotionOverlay(incoming)
+            visual = createMotionGhost(target.element)
+            placeGhost(overlay, visual, rect)
+            gsap.set(target.element, { visibility: 'hidden' })
+            gsap.set(visual, { willChange: 'transform, opacity' })
+          }
+          timeline.fromTo(visual, {
+            autoAlpha: 0, ...(useScale ? { scale: 0.3, transformOrigin: '50% 50%' } : { clipPath: foldedClip(rect) }),
+            x: anchorRect.left + anchorRect.width / 2 - rect.left - rect.width / 2,
+            y: anchorRect.top + anchorRect.height / 2 - rect.top - rect.height / 2,
+          }, { autoAlpha: 1, x: 0, y: 0, ...(useScale ? { scale: 1 } : { clipPath: 'inset(0px 0px 0px 0px round 4px)' }), duration: duration * (useScale ? 0.8 : 0.82), ease: useScale ? 'power2.out' : ease, immediateRender: true }, Math.max(0, unfolds.indexOf(target)) * step)
+        }
+      } else timeline.fromTo(plan.entering.map(target => target.element),
+        { autoAlpha: 0, y: offset },
+        { autoAlpha: 1, y: 0, duration: Math.min(duration, 0.3), stagger, ease: 'power2.out', immediateRender: true },
+        mode === 'page' ? swapAt + 0.16 : 0,
+      )
+    }
   }, options.reduced ?? false, cleanup)
 }

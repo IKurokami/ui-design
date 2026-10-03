@@ -8,19 +8,27 @@ import InfoDialog from '../components/ui/InfoDialog.vue'
 import { infoDialogKey } from '../components/ui/info-dialog'
 import { usePageMotion } from '../animations/composables/usePageMotion'
 import { useRouteDirection } from '../animations/composables/useRouteDirection'
+import PasswordResetDialog from '../features/auth/components/PasswordResetDialog.vue'
+import { passwordResetDialogKey } from '../features/auth/components/password-reset-dialog'
 const router = useRouter()
 const route = useRoute()
 const isAuth = computed(() => route.meta.layout === 'auth' || route.path === '/login' || route.path === '/register')
 const isHome = computed(() => route.path === '/')
+const isDashboard = computed(() => route.meta.layout === 'dashboard' || route.path === '/library')
 const brand = ref<HTMLElement>()
-const pages = usePageMotion(brand, computed(() => !isHome.value), useRouteDirection())
+const brandLayout = computed(() => isDashboard.value ? 'library' : isHome.value ? 'home' : 'auth')
+const pages = usePageMotion(brand, computed(() => !isHome.value), useRouteDirection(), brandLayout)
 const infoDialog = ref<InstanceType<typeof InfoDialog>>()
+const passwordReset = ref<InstanceType<typeof PasswordResetDialog>>()
+const pageContent = ref<HTMLElement>()
 provide(infoDialogKey, page => infoDialog.value?.open(page))
+provide(passwordResetDialogKey, source => passwordReset.value?.open(source))
 </script>
 <template>
-  <div class="page-stage" :class="{ 'page-stage-home': isHome }">
-  <a ref="brand" href="/" class="app-brand brand" :class="{ 'app-brand-home': isHome }" aria-label="Mộc — Trang chủ" @click.prevent="router.push('/')">
-    <BookOpen :size="27" :stroke-width="1.5" /><span class="brand-name">mộc<span>.</span></span>
+  <div class="page-stage" :class="{ 'page-stage-home': isHome, 'page-stage-dashboard': isDashboard }">
+  <div ref="pageContent" class="page-content">
+  <a ref="brand" href="/" class="app-brand brand" :class="{ 'app-brand-home': isHome, 'app-brand-library': isDashboard }" aria-label="Mộc — Trang chủ" @click.prevent="router.push('/')">
+    <span class="brand-icon"><BookOpen :size="27" :stroke-width="1.5" /></span><span class="brand-name">mộc<span>.</span></span>
   </a>
   <div class="page-viewport">
   <RouterView v-slot="{ Component }">
@@ -37,6 +45,8 @@ provide(infoDialogKey, page => infoDialog.value?.open(page))
     </Transition>
   </RouterView>
   </div>
+  </div>
   <InfoDialog ref="infoDialog" />
+  <PasswordResetDialog ref="passwordReset" :background="pageContent" />
   </div>
 </template>

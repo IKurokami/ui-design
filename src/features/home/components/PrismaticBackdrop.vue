@@ -2,6 +2,7 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import gsap from 'gsap'
 import { createPrismaticSurface, type PrismaticSurface } from '../prismatic-surface'
+import { disposeAfterRemoval } from '../../../animations/lifecycle/disposeAfterRemoval'
 const root = ref<HTMLElement>()
 const image = ref<HTMLImageElement>()
 const canvas = ref<HTMLCanvasElement>()
@@ -55,12 +56,16 @@ onMounted(() => {
   startSeam()
   updatePlayback()
 })
-onBeforeUnmount(() => {
+function dispose() {
   observer?.disconnect(); resizeObserver?.disconnect()
   document.removeEventListener('visibilitychange', updatePlayback)
   window.removeEventListener('resize', resize)
-  context?.revert(); surface?.dispose()
-})
+  // This clock owns an object, not DOM styles. Kill it without rewinding phase.
+  context?.kill(); surface?.dispose()
+  tweens.length = 0
+  surface = undefined
+}
+onBeforeUnmount(() => disposeAfterRemoval(root.value, dispose))
 </script>
 <template>
   <div ref="root" class="landing-background" aria-hidden="true">

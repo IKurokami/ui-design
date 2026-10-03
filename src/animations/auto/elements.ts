@@ -59,7 +59,7 @@ export function discoverMotion(root: HTMLElement): MotionDiscovery {
   const selected = candidates.filter(element => {
     // A marked card owns its subtree. Do not animate a card and its title twice.
     for (let parent = element.parentElement; parent && parent !== root; parent = parent.parentElement) {
-      if (candidateSet.has(parent) && explicitSet.has(parent)) return false
+      if (candidateSet.has(parent) && explicitSet.has(parent) && !element.hasAttribute('data-motion-nested')) return false
       if (!explicitSet.has(element) && candidateSet.has(parent) && !explicitAncestors.has(parent)) return false
     }
     return explicitSet.has(element) || !explicitAncestors.has(element)

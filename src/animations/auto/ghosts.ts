@@ -26,13 +26,16 @@ export function createMotionGhost(source: HTMLElement) {
   return clone
 }
 
-export function createMotionOverlay() {
+export function createMotionOverlay(root?: HTMLElement) {
   const overlay = document.createElement('div')
   overlay.setAttribute('data-motion-overlay', '')
   overlay.setAttribute('aria-hidden', 'true')
   overlay.inert = true
   Object.assign(overlay.style, { position: 'fixed', inset: '0', zIndex: '40', pointerEvents: 'none', overflow: 'hidden' })
-  document.body.append(overlay)
+  // A native modal is above every normal z-index. Keep its visual copies in the
+  // same top layer rather than underneath the modal backdrop.
+  const host = root?.closest('dialog[open]') ?? document.body
+  host.append(overlay)
   return overlay
 }
 

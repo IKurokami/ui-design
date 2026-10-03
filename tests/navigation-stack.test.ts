@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, nextTick, ref, type Component } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
+import { createPinia } from 'pinia'
 import App from '../src/app/App.vue'
 import { animateStack } from '../src/animations/navigation/transitions'
 import NavigationStack from '../src/components/navigation/NavigationStack.vue'
@@ -24,7 +25,7 @@ async function setup(path = '/login', root: Component = NavigationStack) {
   window.history.replaceState(null, '', path)
   const router = createRouter({ history: createWebHistory(), routes: [{ path: '/login', component: Login }, { path: '/register', component: Register }] })
   await router.push(path); await router.isReady()
-  const wrapper = mount(root, { attachTo: document.body, global: { plugins: [router] } })
+  const wrapper = mount(root, { attachTo: document.body, global: { plugins: [router, createPinia()] } })
   cleanup = () => { wrapper.unmount(); router.options.history.destroy() }
   await flushPromises()
   return { wrapper, router }

@@ -26,6 +26,18 @@ function controller() {
   return { pages: pages!, wrapper, auth }
 }
 describe('page and brand motion', () => {
+  it('preserves the existing always-animated navigation when the system requests reduced motion', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })))
+    const { wrapper, auth } = controller()
+    const brand = wrapper.get('a').element
+    const flip = vi.spyOn(Flip, 'from')
+    auth.value = true
+    await flushPromises()
+    expect(flip).toHaveBeenCalledOnce()
+    expect(flip.mock.calls[0]![1]!.targets).toBe(brand)
+    expect((flip.mock.results[0]!.value as gsap.core.Timeline).duration()).toBeCloseTo(0.62)
+  })
+
   it('uses Flip on the same brand in both directions and cleans up rapid route changes', async () => {
     const { wrapper, auth } = controller()
     const brand = wrapper.get('a').element
@@ -38,6 +50,26 @@ describe('page and brand motion', () => {
     expect(wrapper.get('a').element).toBe(brand)
     wrapper.unmount(); cleanups.pop()
     expect(gsap.getTweensOf(brand)).toHaveLength(0)
+  })
+
+  it('does not force a partially played logo Flip to its endpoint on reversal', async () => {
+    const { auth, wrapper } = controller()
+    const brand = wrapper.get('a').element as HTMLElement
+    vi.spyOn(brand, 'getBoundingClientRect').mockImplementation(() => ({
+      left: Number.parseFloat(brand.style.left), top: 0, width: 100, height: 35,
+      right: Number.parseFloat(brand.style.left) + 100, bottom: 35, x: Number.parseFloat(brand.style.left), y: 0, toJSON() {},
+    }))
+    const flip = vi.spyOn(Flip, 'from')
+    auth.value = true
+    await flushPromises()
+    const previous = flip.mock.results[0]!.value as gsap.core.Timeline
+    const completed = vi.fn()
+    previous.eventCallback('onComplete', completed)
+    previous.progress(0.35)
+    auth.value = false
+    await flushPromises()
+    expect(completed).not.toHaveBeenCalled()
+    expect(flip).toHaveBeenCalledTimes(2)
   })
   it.each([true, false])('keeps both pages visible and layers the sliding auth above the zooming home (push=%s)', push => {
     const { pages, auth } = controller()
@@ -161,6 +193,7 @@ describe('landing background motion', () => {
     hidden.mockReturnValue(false)
     document.dispatchEvent(new Event('visibilitychange')); expectPaused(false)
     wrapper.unmount(); cleanups.pop()
+    await flushPromises()
     expect(disconnect).toHaveBeenCalledOnce()
     expect(gsap.getTweensOf(targets)).toHaveLength(0)
     expect(surface.dispose).toHaveBeenCalledOnce()
@@ -182,6 +215,7 @@ describe('landing background motion', () => {
     expect(surface.render).toHaveBeenCalled()
     expect(gsap.getTweensOf(image)).toHaveLength(0)
     wrapper.unmount(); cleanups.pop()
+    await flushPromises()
     expect(gsap.getTweensOf(surface)).toHaveLength(0)
     expect(surface.dispose).toHaveBeenCalledOnce()
   })

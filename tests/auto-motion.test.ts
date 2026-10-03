@@ -143,6 +143,21 @@ describe('generic animation lifecycle', () => {
     expect(document.querySelector('[data-motion-overlay]')).toBeNull()
     expect(snapshot.targets[0]!.element.hasAttribute('data-flip-id')).toBe(false)
   })
+  it('keeps exiting visuals inside a native dialog top layer', async () => {
+    const dialog = document.createElement('dialog')
+    dialog.setAttribute('open', '')
+    document.body.append(dialog)
+    const element = root('<article data-motion-key="gone">Goodbye</article>')
+    dialog.append(element)
+    bounds(element.querySelector('article')!, 60)
+    const snapshot = captureMotion(element, { ghosts: true })
+    element.replaceChildren()
+    const instance = manager()
+    const animation = animateMotion(instance, snapshot, element, { mode: 'list' })
+    expect(dialog.querySelector('[data-motion-overlay]')?.parentElement).toBe(dialog)
+    instance.finish(); await animation
+    expect(dialog.querySelector('[data-motion-overlay]')).toBeNull()
+  })
   it('animates shared elements over sliding pages without transforming their live DOM', async () => {
     const before = root('<article data-motion-key="book">Old book</article>', 'books')
     const after = root('<article data-motion-key="book">New book</article>', 'books')
@@ -196,6 +211,106 @@ describe('generic animation lifecycle', () => {
     expect(after.querySelector('h1')!.style.visibility).toBe('')
     expect(after.style.visibility).not.toBe('hidden')
     expect(before.style.visibility).toBe('hidden')
+  })
+})
+
+describe('compact toolbar folding', () => {
+  const foldOptions = {
+    mode: 'list' as const, duration: 0.48, unclip: true, nested: true,
+    collapseTo: { title: 'search', stats: 'search', 'view-label:deck': 'view-icon:deck', 'view-label:list': 'view-icon:list', 'category:': 'category:all' },
+    foldGroup: 'category:', foldStagger: 0.025,
+  }
+  function position(element: HTMLElement, key: string, top: number, left: number, width: number, height = 30) {
+    bounds(element.querySelector<HTMLElement>(`[data-motion-key="${key}"]`)!, top, left, width, height)
+  }
+  it('folds labels into their own controls and badges sequentially before layout completes', async () => {
+    const before = root('<h1 data-motion-key="title">Title</h1><p data-motion-key="stats">Counts</p><div data-motion-key="search">Search</div><span data-motion-key="view-icon:deck">Deck icon</span><span data-motion-key="view-label:deck">Deck label</span><span data-motion-key="view-icon:list">List icon</span><span data-motion-key="view-label:list">List label</span><button data-motion-key="category:all">All</button><button data-motion-key="category:a">Genre A</button><button data-motion-key="category:b">Genre B</button>')
+    const after = root('<div data-motion-key="search">Search</div><span data-motion-key="view-icon:deck">Deck icon</span><span data-motion-key="view-icon:list">List icon</span><button data-motion-key="category:all">All</button>')
+    position(before, 'title', 0, 20, 200)
+    position(before, 'stats', 40, 20, 250)
+    position(before, 'search', 100, 20, 300)
+    position(before, 'view-icon:deck', 100, 550, 16)
+    position(before, 'view-label:deck', 100, 580, 70)
+    position(before, 'view-icon:list', 100, 670, 16)
+    position(before, 'view-label:list', 100, 700, 80)
+    position(before, 'category:all', 160, 20, 140)
+    position(before, 'category:a', 160, 170, 100)
+    position(before, 'category:b', 160, 280, 100)
+    position(after, 'search', 10, 20, 300)
+    position(after, 'view-icon:deck', 10, 550, 16)
+    position(after, 'view-icon:list', 10, 590, 16)
+    position(after, 'category:all', 10, 360, 140)
+    const to = vi.spyOn(gsap.core.Timeline.prototype, 'to')
+    const instance = manager()
+    const animation = animateMotion(instance, captureMotion(before, { ghosts: true }), after, foldOptions)
+    function fold(label: string) {
+      // GSAP exposes a legacy overload; these calls use the vars/position API.
+      const calls = to.mock.calls as unknown as [unknown, gsap.TweenVars, number][]
+      return calls.find(call => call[0] instanceof HTMLElement && call[0].textContent === label && 'x' in call[1])!
+    }
+    expect(fold('Title')[1].x).toBe(50)
+    expect(fold('Counts')[1].x).toBe(25)
+    expect(fold('Deck label')[1].x).toBe(-57)
+    expect(fold('List label')[1].x).toBe(-142)
+    expect(fold('Genre A')[1].x).toBe(210)
+    expect(fold('Genre A')[2]).toBe(0)
+    expect(fold('Genre B')[2]).toBe(0.025)
+    expect(Number(fold('Genre B')[2]) + Number(fold('Genre B')[1].duration)).toBeLessThan(0.48)
+    instance.finish(); await animation
+    expect(document.querySelector('[data-motion-overlay]')).toBeNull()
+  })
+  it('keeps a long badge strip clipped and only flies badges fully inside the destination viewport', async () => {
+    const before = root('<div data-motion-clip><button data-motion-key="category:all" data-motion-overlay-target>All</button></div>')
+    bounds(before.firstElementChild as HTMLElement, 10, 300, 200, 40)
+    position(before, 'category:all', 15, 300, 80)
+    const snapshot = captureMotion(before, { ghosts: true })
+    const after = root(`<div data-motion-clip style="overflow:hidden !important"><div data-motion-clip style="overflow-x:auto;overflow-y:hidden"><button data-motion-key="category:all" data-motion-overlay-target>All</button>${Array.from({ length: 15 }, (_, i) => `<button data-motion-key="category:${i}" data-motion-overlay-target>Genre ${i}</button>`).join('')}</div></div>`)
+    after.style.overflow = 'hidden'
+    const wrapper = after.firstElementChild as HTMLElement
+    const strip = wrapper.firstElementChild as HTMLElement
+    bounds(wrapper, 100, 300, 200, 40)
+    bounds(strip, 100, 300, 200, 40)
+    position(after, 'category:all', 105, 300, 80)
+    for (let i = 0; i < 15; i++) position(after, `category:${i}`, 105, 390 + i * 90, 80)
+    const instance = manager()
+    const animation = animateMotion(instance, snapshot, after, foldOptions)
+    expect(wrapper.style.getPropertyValue('overflow')).toBe('hidden')
+    expect(wrapper.style.getPropertyPriority('overflow')).toBe('important')
+    expect(strip.style.overflowX).toBe('auto')
+    expect(strip.style.overflowY).toBe('hidden')
+    expect(after.style.overflow).toBe('visible')
+    expect(after.classList.contains('is-motion-layout-active')).toBe(true)
+    const overlay = document.querySelector('[data-motion-overlay]')!
+    expect(overlay.textContent).toContain('Genre 0')
+    expect(overlay.textContent).not.toContain('Genre 1') // Only 20px visible: fade under the viewport clip.
+    expect(overlay.textContent).not.toContain('Genre 2') // Completely outside: no ghost.
+    expect(after.querySelector<HTMLElement>('[data-motion-key="category:0"]')!.style.visibility).toBe('hidden')
+    expect(after.querySelector<HTMLElement>('[data-motion-key="category:1"]')!.style.opacity).toBe('0')
+    expect(after.querySelector<HTMLElement>('[data-motion-key="category:2"]')!.style.opacity).toBe('')
+    instance.dispose(); await animation
+    expect(after.style.overflow).toBe('hidden')
+    expect(after.classList.contains('is-motion-layout-active')).toBe(false)
+    expect(after.querySelector<HTMLElement>('[data-motion-key="category:0"]')!.style.visibility).toBe('')
+    expect(after.querySelector<HTMLElement>('[data-motion-key="category:1"]')!.style.opacity).toBe('')
+    expect(after.querySelector('[data-flip-id]')).toBeNull()
+    expect(document.querySelector('[data-motion-overlay]')).toBeNull()
+  })
+  it('folds only the visible portions when collapsing a horizontally scrolled badge strip', async () => {
+    const before = root('<div data-motion-clip><button data-motion-key="category:all" data-motion-overlay-target>All</button><button data-motion-key="category:a" data-motion-overlay-target>Partial</button><button data-motion-key="category:b" data-motion-overlay-target>Visible</button><button data-motion-key="category:c" data-motion-overlay-target>Offscreen</button></div>')
+    bounds(before.firstElementChild as HTMLElement, 100, 300, 200, 40)
+    position(before, 'category:all', 105, 100, 80)
+    position(before, 'category:a', 105, 250, 80)
+    position(before, 'category:b', 105, 350, 80)
+    position(before, 'category:c', 105, 550, 80)
+    const after = root('<button data-motion-key="category:all" data-motion-overlay-target>All</button>')
+    position(after, 'category:all', 10, 360, 140)
+    const instance = manager()
+    const animation = animateMotion(instance, captureMotion(before, { ghosts: true }), after, foldOptions)
+    const ghosts = [...document.querySelectorAll<HTMLElement>('[data-motion-overlay] > *')]
+    expect(ghosts.map(ghost => ghost.textContent)).toEqual(['Partial', 'Visible'])
+    expect(ghosts[0]!.style.clipPath).toBe('inset(0px 0px 0px 50px)')
+    instance.finish(); await animation
+    expect(document.querySelector('[data-motion-overlay]')).toBeNull()
   })
 })
 

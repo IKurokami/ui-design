@@ -26,3 +26,11 @@ export function validateRegister(values: RegisterValues): FieldErrors<RegisterVa
   if (!values.acceptedTerms) errors.acceptedTerms = 'Vui lòng đồng ý với điều khoản để tiếp tục.'
   return errors
 }
+export function validateResetPassword(values: { password: string; confirmPassword: string }): { password?: string; confirmPassword?: string } {
+  const errors: { password?: string; confirmPassword?: string } = {}
+  if (!values.password) errors.password = 'Vui lòng nhập mật khẩu mới.'
+  else if (passwordRules(values.password).some(rule => !rule.valid)) errors.password = 'Mật khẩu cần đáp ứng cả 3 yêu cầu bên dưới.'
+  if (!values.confirmPassword) errors.confirmPassword = 'Vui lòng nhập lại mật khẩu.'
+  else if (values.confirmPassword !== values.password) errors.confirmPassword = 'Hai mật khẩu chưa khớp nhau.'
+  return errors
+}
