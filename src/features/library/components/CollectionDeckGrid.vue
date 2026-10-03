@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import type { CollectionDeck } from '../types'
+import type { CollectionDeck, ViewMode } from '../types'
 import CollectionDeckCard from './CollectionDeckCard.vue'
 import { FolderSearch } from '@lucide/vue'
 
 defineProps<{
   decks: CollectionDeck[]
+  viewMode?: ViewMode
 }>()
 
 const emit = defineEmits<{
@@ -15,7 +16,17 @@ const emit = defineEmits<{
 
 <template>
   <div class="deck-grid-container">
-    <div v-if="decks.length > 0" class="deck-grid">
+    <div v-if="decks.length > 0 && viewMode === 'list'" class="deck-list" aria-label="Danh sách bộ truyện">
+      <button v-for="deck in decks" :key="deck.id" class="deck-list-item" type="button"
+        @click="emit('select', deck)"
+        @mouseenter="emit('hover', deck, $event.currentTarget as HTMLElement)"
+        @focus="emit('hover', deck, $event.currentTarget as HTMLElement)">
+        <img :src="deck.covers[1]" alt="" crossorigin="anonymous" loading="lazy" />
+        <span class="list-copy"><strong>{{ deck.title }}</strong><span>{{ deck.tags.join(' · ') }}</span></span>
+        <span class="list-count">{{ deck.itemCount }} tập</span>
+      </button>
+    </div>
+    <div v-else-if="decks.length > 0" class="deck-grid">
       <CollectionDeckCard
         v-for="deck in decks"
         :key="deck.id"
@@ -40,6 +51,15 @@ const emit = defineEmits<{
 .deck-grid-container {
   width: 100%;
 }
+.deck-list { display: grid; gap: 4px; padding-bottom: 60px; }
+.deck-list-item { display: flex; align-items: center; gap: 18px; width: 100%; padding: 14px 12px; border: 0; border-radius: 12px; background: transparent; color: var(--library-ink); text-align: left; cursor: pointer; font: inherit; }
+.deck-list-item:hover { background: color-mix(in oklab, var(--library-accent) 5%, transparent); }
+.deck-list-item:focus-visible { outline: none; background: color-mix(in oklab, var(--library-accent) 14%, transparent); }
+.deck-list-item > img { width: 44px; height: 62px; border-radius: 5px; object-fit: cover; flex-shrink: 0; }
+.list-copy { display: flex; flex: 1; flex-direction: column; gap: 7px; min-width: 0; }
+.list-copy strong { font-size: 14px; font-weight: 600; }
+.list-copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--library-muted); }
+.list-count { font-size: 12px; color: var(--library-muted); white-space: nowrap; }
 
 .deck-grid {
   display: grid;

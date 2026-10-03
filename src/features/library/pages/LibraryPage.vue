@@ -5,7 +5,8 @@ import LibraryStickyHeader from '../components/LibraryStickyHeader.vue'
 import CollectionDeckGrid from '../components/CollectionDeckGrid.vue'
 import AmbientBackdrop from '../components/AmbientBackdrop.vue'
 import { mockCategories, mockCollections } from '../data/mock-collections'
-import type { CollectionDeck, ViewMode } from '../types'
+import type { CollectionDeck, SortMode, ViewMode } from '../types'
+import { sortCollections } from '../sorting'
 import type { AmbientColors } from '../ambient-surface'
 import { extractAmbientPalette } from '../ambient-palette'
 import '../library-theme.css'
@@ -13,6 +14,7 @@ import '../library-theme.css'
 const activeCategory = ref('all')
 const viewMode = ref<ViewMode>('deck')
 const searchQuery = ref('')
+const sortMode = ref<SortMode>('newest')
 const selectedDeck = ref<CollectionDeck | null>(null)
 const scrollArea = ref<HTMLElement>()
 
@@ -70,10 +72,7 @@ const filteredDecks = computed(() => {
     return true
   })
 })
-
-const totalItems = computed(() => {
-  return mockCollections.reduce((sum, d) => sum + d.itemCount, 0)
-})
+const sortedDecks = computed(() => sortCollections(filteredDecks.value, sortMode.value))
 
 function onSelectDeck(deck: CollectionDeck) {
   selectedDeck.value = deck
@@ -93,18 +92,20 @@ function onSelectDeck(deck: CollectionDeck) {
         <div class="library-container">
           <LibraryStickyHeader
             :scroll-element="scrollArea"
-            title="Tổng hợp"
-            :total-items="totalItems"
+            title="Thư viện"
             :total-collections="mockCollections.length"
+            :result-count="filteredDecks.length"
             :categories="mockCategories"
             v-model:activeCategory="activeCategory"
             v-model:viewMode="viewMode"
             v-model:searchQuery="searchQuery"
+            v-model:sortMode="sortMode"
           />
 
           <!-- Deck Grid View Component -->
           <CollectionDeckGrid
-            :decks="filteredDecks"
+            :decks="sortedDecks"
+            :view-mode="viewMode"
             @select="onSelectDeck"
             @hover="onDeckHover"
           />

@@ -203,11 +203,14 @@ export function animateMotion(manager: AnimationManager, before: MotionSnapshot,
         placeGhost(overlay, ghost, from)
         const nextGhost = createMotionGhost(pair.after.element)
         gsap.set([pair.before.element, pair.after.element], { visibility: 'hidden' })
-        timeline.to(ghost, { x: to.left - from.left, y: to.top - from.top, scaleX: to.width / from.width, scaleY: to.height / from.height, duration, ease }, 0)
+        const size = useScale ? { scaleX: to.width / from.width, scaleY: to.height / from.height } : { width: to.width, height: to.height }
+        timeline.to(ghost, { x: to.left - from.left, y: to.top - from.top, ...size, duration, ease }, 0)
         // Crossfade into the destination's real content and styling, including images.
         placeGhost(overlay, nextGhost, from)
-        gsap.set(nextGhost, { visibility: 'visible', autoAlpha: 0, scaleX: from.width / to.width, scaleY: from.height / to.height, width: to.width, height: to.height })
-        timeline.to(nextGhost, { x: to.left - from.left, y: to.top - from.top, scaleX: 1, scaleY: 1, autoAlpha: 1, duration, ease }, 0)
+        gsap.set(nextGhost, { visibility: 'visible', autoAlpha: 0, ...(useScale
+          ? { scaleX: from.width / to.width, scaleY: from.height / to.height, width: to.width, height: to.height }
+          : { width: from.width, height: from.height }) })
+        timeline.to(nextGhost, { x: to.left - from.left, y: to.top - from.top, ...(useScale ? { scaleX: 1, scaleY: 1 } : size), autoAlpha: 1, duration, ease }, 0)
         timeline.to(ghost, { autoAlpha: 0, duration, ease }, 0)
       }
       return
@@ -244,7 +247,7 @@ export function animateMotion(manager: AnimationManager, before: MotionSnapshot,
             duration: foldDuration, ease: useScale ? 'power2.inOut' : ease,
           }, start)
           const fadeAt = useScale ? 0.7 : 0.3
-          timeline.to(target.ghost, { autoAlpha: 0, duration: foldDuration * (1 - fadeAt), ease: 'sine.inOut' }, start + foldDuration * fadeAt)
+          timeline.to(target.ghost, { autoAlpha: 0, duration: foldDuration * (1 - fadeAt), ease: useScale ? 'power1.in' : ease }, start + foldDuration * fadeAt)
         } else {
           timeline.to(target.ghost, { autoAlpha: 0, y: -offset, ...(useScale ? { scale: 0.96 } : {}), duration: Math.min(duration, 0.25), ease: 'power1.in' }, 0)
         }

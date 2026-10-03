@@ -1,6 +1,6 @@
 export interface LoginValues { identity: string; password: string; remember: boolean }
 export interface RegisterValues { displayName: string; email: string; password: string; confirmPassword: string; acceptedTerms: boolean }
-export interface AuthUser { id: string; displayName: string; email: string }
+export interface AuthUser { id: string; displayName: string; email: string; avatarUrl?: string; avatar?: string }
 export interface AuthSession { user: AuthUser }
 export interface AuthAdapter {
   login(values: LoginValues, signal?: AbortSignal): Promise<AuthSession>

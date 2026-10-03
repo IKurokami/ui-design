@@ -1,4 +1,5 @@
-/* One page surface; interface elements remain transparent above the ambient canvas. */
+/* Containers stay fully transparent above the ambient canvas. Only individual
+   controls use low-alpha fills and backdrop blur; no borders or shadows. */
 .library-layout {
   --library-surface: #ffffff;
   --library-accent: #435a41;
@@ -6,7 +7,6 @@
   --library-muted: color-mix(in oklab, var(--library-ink) 72%, var(--library-surface));
   --library-control-ink: var(--library-ink);
   --library-badge-ink: var(--library-ink);
-  --library-border: color-mix(in oklab, var(--library-ink) 15%, transparent);
   --library-danger-ink: #631616;
 }
 
@@ -24,13 +24,6 @@
   border-radius: 12px;
 }
 
-.library-layout .library-header {
-  background: transparent;
-  border-radius: 20px;
-  padding: 20px;
-  margin-bottom: 20px;
-}
-
 .library-layout .empty-state {
   background: transparent;
   border-radius: 20px;
@@ -39,7 +32,6 @@
 @media (prefers-contrast: more) {
   .library-layout {
     --library-muted: var(--library-ink);
-    --library-border: var(--library-ink);
   }
 }
 

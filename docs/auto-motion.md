@@ -191,6 +191,7 @@ try {
 | `collapseTo` | Không có | Key đích hoặc map key/prefix → key đích để thu phần tử biến mất; key chưa khai báo chọn đích gần nhất trong map |
 | `foldGroup`, `foldStagger` | Không có, `0` | Thu lần lượt nhóm key; giới hạn tổng độ trễ để hoàn tất trước layout |
 | `unclip`, `nested` | `false` | Cho phép đi qua container và bù transform của cha; `data-motion-clip` vẫn giữ giới hạn |
+| `scale` | `true` | `false`: FLIP và shared overlay đổi width/height thật, enter/leave dùng reveal/fade thay vì scale |
 
 `useAutoMotion` luôn dùng `list`; thêm `deep` (mặc định `true`), `onError`, và `reduced` dạng boolean hoặc getter. Khi không truyền `reduced`, nó đọc `prefers-reduced-motion` ở mỗi cập nhật. `finish()` hoàn tất animation hiện tại. Khi resize, cập nhật mới hoặc unmount, composable hoàn tất/dọn animation và snapshot. Các thay đổi trong cùng render batch giữ snapshot đầu tiên và chỉ animate DOM mới nhất.
 
@@ -204,7 +205,7 @@ Khi đổi hướng giữa chừng, pause timeline trước khi kill để `Flip
 
 ## Lifecycle, giới hạn và kiểm tra
 
-Header Library dùng `useAutoMotion` trên các control thật, với `power3.inOut` trong 0.56 giây, không bounce. Tiêu đề/thống kê thu vào search; nhãn chế độ thu vào icon tương ứng. Badge đang nhìn thấy lần lượt thu vào “Tất cả thể loại”, hoàn tất trước FLIP chính. Scroll viewport giữ nguyên overflow; badge đi qua ghost overlay riêng. Khi expand, chỉ badge nằm trọn trong viewport có ghost chuyển động; badge ở mép fade trong vùng clip, badge ngoài vùng không tạo ghost. Capture giữ phần giao với viewport để badge bị che không đột ngột hiện ra khi collapse. CSS transition trong header được tắt tạm bằng `is-motion-layout-active`, và cleanup xóa lớp này khi hoàn tất hoặc unmount.
+Header Library dùng timeline GSAP riêng trong `LibraryStickyHeader.vue`, không còn dùng `useAutoMotion`/FLIP hoặc ghost để gom nhãn. Trạng thái gồm `inline`, `compact`, `overlay`: cuộn xuống dù chỉ 1px sẽ thu gọn; cuộn về đầu, focus và click control không tự mở lại. Mở thủ công khi đã cuộn sẽ chuyển cùng DOM qua Teleport ra `body`, định vị absolute theo toàn chiều rộng scroll content. Nền trắng scaleY/fade trong 0.42 giây khi mở, 0.3 giây khi đóng; nội dung trượt nhẹ/fade riêng để chữ không bị scale. Portal giữ nguyên đến khi đóng xong, còn vị trí trong luồng giữ 64px. Chỉ chế độ overlay có nền trắng; các trạng thái khác trong suốt. Timeline cũ bị hủy khi đổi hướng, resize hoặc unmount; reduced motion bỏ qua animation.
 
 - Snapshot và animation chỉ thuộc một root/controller, không có cache key toàn cục hoặc trạng thái form trong storage.
 - Exit của list dùng bản sao thị giác vì Vue đã bỏ node khỏi DOM. Bản sao `inert`, `aria-hidden`, không nhận pointer; xóa ID/handler và giá trị control. Không gắn lại control cũ vào form thật.

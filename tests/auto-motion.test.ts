@@ -216,7 +216,7 @@ describe('generic animation lifecycle', () => {
 
 describe('compact toolbar folding', () => {
   const foldOptions = {
-    mode: 'list' as const, duration: 0.48, unclip: true, nested: true,
+    mode: 'list' as const, duration: 0.48, ease: 'sine.inOut', scale: false, unclip: true, nested: true,
     collapseTo: { title: 'search', stats: 'search', 'view-label:deck': 'view-icon:deck', 'view-label:list': 'view-icon:list', 'category:': 'category:all' },
     foldGroup: 'category:', foldStagger: 0.025,
   }
@@ -293,6 +293,53 @@ describe('compact toolbar folding', () => {
     expect(after.querySelector<HTMLElement>('[data-motion-key="category:0"]')!.style.visibility).toBe('')
     expect(after.querySelector<HTMLElement>('[data-motion-key="category:1"]')!.style.opacity).toBe('')
     expect(after.querySelector('[data-flip-id]')).toBeNull()
+    expect(document.querySelector('[data-motion-overlay]')).toBeNull()
+  })
+  it.each(['collapse', 'expand'] as const)('keeps text and icons at unit scale throughout %s, with nested labels on an independent layer', async direction => {
+    const expanded = '<h1 data-motion-key="title">Title</h1><div data-motion-key="search"><input value="Overlord" /></div><div data-motion-key="view-mode"><button data-motion-key="view-button:deck" data-motion-nested><span data-motion-key="view-icon:deck" data-motion-nested data-motion-overlay-target>Icon</span><span data-motion-key="view-label:deck" data-motion-nested>Deck label</span></button></div><button data-motion-key="category:all" data-motion-overlay-target>All</button><button data-motion-key="category:a" data-motion-overlay-target>Genre A</button>'
+    const compact = '<div data-motion-key="search"><input value="Overlord" /></div><div data-motion-key="view-mode"><button data-motion-key="view-button:deck" data-motion-nested><span data-motion-key="view-icon:deck" data-motion-nested data-motion-overlay-target>Icon</span></button></div><button data-motion-key="category:all" data-motion-overlay-target>All</button>'
+    const before = root(direction === 'collapse' ? expanded : compact)
+    const after = root(direction === 'collapse' ? compact : expanded)
+    function geometry(element: HTMLElement, isExpanded: boolean) {
+      position(element, 'search', isExpanded ? 100 : 10, 20, isExpanded ? 300 : 440, 42)
+      position(element, 'view-mode', isExpanded ? 100 : 10, 550, isExpanded ? 140 : 40, 36)
+      position(element, 'view-button:deck', isExpanded ? 103 : 13, 553, isExpanded ? 134 : 34, 30)
+      position(element, 'view-icon:deck', isExpanded ? 110 : 20, 560, 16, 16)
+      position(element, 'category:all', isExpanded ? 160 : 10, isExpanded ? 20 : 360, isExpanded ? 140 : 120, 36)
+      if (isExpanded) {
+        position(element, 'title', 0, 20, 200)
+        position(element, 'view-label:deck', 110, 590, 70, 16)
+        position(element, 'category:a', 160, 170, 100, 36)
+      }
+    }
+    geometry(before, direction === 'collapse')
+    geometry(after, direction === 'expand')
+    const flip = vi.spyOn(Flip, 'from')
+    const instance = manager()
+    const animation = animateMotion(instance, captureMotion(before, { ghosts: true }), after, foldOptions)
+    expect(flip.mock.calls[0]![1]!.scale).toBe(false)
+    // Drive the actual engine timeline, including Flip and all overlay tweens.
+    const timeline = (instance as unknown as { timeline: gsap.core.Timeline }).timeline
+    timeline.pause()
+    const visuals = [...after.querySelectorAll<HTMLElement>('[data-motion-key]'), ...document.querySelectorAll<HTMLElement>('[data-motion-overlay] > *')]
+    for (const progress of [0, 0.2, 0.5, 0.8, 0.99]) {
+      timeline.progress(progress)
+      for (const visual of visuals) {
+        expect(Number(gsap.getProperty(visual, 'scaleX'))).toBe(1)
+        expect(Number(gsap.getProperty(visual, 'scaleY'))).toBe(1)
+      }
+    }
+    const mode = after.querySelector<HTMLElement>('[data-motion-key="view-mode"]')!
+    expect(mode.style.width).not.toBe('') // Actual dimensions, not stretched type.
+    if (direction === 'expand') {
+      const label = after.querySelector<HTMLElement>('[data-motion-key="view-label:deck"]')!
+      expect(label.style.visibility).toBe('hidden')
+      expect(label.style.transform).toBe('') // Does not compound its parent's motion.
+      expect(document.querySelector('[data-motion-overlay]')!.textContent).toContain('Deck label')
+    }
+    expect((after.querySelector('input') as HTMLInputElement).value).toBe('Overlord')
+    instance.finish(); await animation
+    expect(mode.style.width).toBe(direction === 'collapse' ? '40px' : '140px')
     expect(document.querySelector('[data-motion-overlay]')).toBeNull()
   })
   it('folds only the visible portions when collapsing a horizontally scrolled badge strip', async () => {

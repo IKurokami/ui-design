@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Home,
@@ -10,21 +10,55 @@ import {
   CheckCircle2,
   Settings,
   LogOut,
-  Moon,
-  Sun,
 } from '@lucide/vue'
 import { useAuthStore } from '../../../stores/auth.store'
+import { createApiClient } from '../../../services/api-client'
+import UserAvatar from '../../../components/ui/UserAvatar.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
 // Mặc định ở trang Library là tab Tổng quan
 const activeTab = ref<'home' | 'library' | 'reading'>('home')
-const isDark = ref(false)
 
-function toggleTheme() {
-  isDark.value = !isDark.value
+const user = computed(() => authStore.user)
+const userDisplayName = computed(() => user.value?.displayName || '')
+const userSeed = computed(() => user.value?.email || user.value?.displayName || user.value?.id || 'moc-user')
+const userAvatar = ref<string | null>(null)
+
+async function fetchUserProfile() {
+  if (user.value?.avatarUrl) {
+    userAvatar.value = user.value.avatarUrl
+    return
+  }
+  if (user.value?.avatar) {
+    userAvatar.value = user.value.avatar
+    return
+  }
+  if (authStore.isAuthenticated) {
+    try {
+      const client = createApiClient()
+      const profile = await client.request<{ avatarUrl?: string }>('/api/profile/me')
+      if (profile?.avatarUrl) {
+        userAvatar.value = profile.avatarUrl
+      }
+    } catch {
+      // Giữ null để fallback sang Identicon phong cách GitHub
+    }
+  }
 }
+
+watch(
+  user,
+  () => {
+    fetchUserProfile()
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  fetchUserProfile()
+})
 
 async function handleLogout() {
   await authStore.logout()
@@ -122,9 +156,18 @@ async function handleLogout() {
 
     <!-- Bottom Settings & Actions -->
     <div class="sidebar-bottom">
-      <button type="button" class="action-btn" title="Chế độ đọc sáng/tối" @click="toggleTheme">
-        <Sun v-if="isDark" :size="18" />
-        <Moon v-else :size="18" />
+      <button
+        type="button"
+        class="action-btn avatar-btn"
+        :title="userDisplayName ? `Tài khoản: ${userDisplayName}` : 'Hồ sơ cá nhân'"
+        :aria-label="userDisplayName ? `Tài khoản: ${userDisplayName}` : 'Hồ sơ cá nhân'"
+      >
+        <UserAvatar
+          :src="userAvatar"
+          :seed="userSeed"
+          :name="userDisplayName"
+          :size="34"
+        />
       </button>
 
       <button type="button" class="action-btn" title="Cài đặt đọc truyện">
@@ -307,6 +350,15 @@ async function handleLogout() {
 .action-btn:hover {
   background-color: rgba(67, 90, 65, 0.08);
   color: var(--sidebar-ink, #303b2f);
+}
+
+.avatar-btn {
+  padding: 0;
+  overflow: visible;
+}
+
+.avatar-btn:hover {
+  background-color: transparent;
 }
 
 .logout-btn:hover {

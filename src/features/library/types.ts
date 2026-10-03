@@ -11,6 +11,8 @@ export interface CollectionDeck {
   itemCount: number
   totalFiles: number
   newCount?: number
+  createdAt?: string
+  favoriteCount?: number
   covers: [string, string, string] // 3 covers for the layered stack effect
   illustrations?: string[]
   tags: string[]
@@ -25,3 +27,4 @@ export interface CategoryFilter {
 }
 
 export type ViewMode = 'deck' | 'list'
+export type SortMode = 'title-asc' | 'title-desc' | 'newest' | 'oldest' | 'favorites'

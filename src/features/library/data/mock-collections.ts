@@ -73,6 +73,8 @@ export const mockCategories: CategoryFilter[] = [
 export const mockCollections: CollectionDeck[] = [
   {
     "id": "ln-mushoku",
+    "createdAt": "2026-09-30T08:00:00.000Z",
+    "favoriteCount": 284,
     "title": "Mushoku Tensei: Thất Nghiệp Chuyển Sinh",
     "category": "isekai",
     "itemCount": 26,
@@ -105,6 +107,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-rezero",
+    "createdAt": "2026-09-27T08:00:00.000Z",
+    "favoriteCount": 392,
     "title": "Re:Zero − Bắt Đầu Lại Ở Thế Giới Khác",
     "category": "isekai",
     "itemCount": 35,
@@ -137,6 +141,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-cote",
+    "createdAt": "2026-09-24T08:00:00.000Z",
+    "favoriteCount": 215,
     "title": "Classroom of the Elite: Lớp Học Thực Lực",
     "category": "romcom",
     "itemCount": 28,
@@ -169,6 +175,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-86",
+    "createdAt": "2026-09-21T08:00:00.000Z",
+    "favoriteCount": 187,
     "title": "86 - Eighty Six: Chiến Trường Khắc Nghiệt",
     "category": "scifi",
     "itemCount": 13,
@@ -201,6 +209,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-oregairu",
+    "createdAt": "2026-09-18T08:00:00.000Z",
+    "favoriteCount": 341,
     "title": "Oregairu: Chuyện Tình Thanh Xuân Bi Hài",
     "category": "romcom",
     "itemCount": 18,
@@ -233,6 +243,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-apothecary",
+    "createdAt": "2026-09-15T08:00:00.000Z",
+    "favoriteCount": 156,
     "title": "Dược Sư Tự Sự: Bí Ẩn Cung Đình",
     "category": "mystery",
     "itemCount": 15,
@@ -265,6 +277,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-slime",
+    "createdAt": "2026-09-12T08:00:00.000Z",
+    "favoriteCount": 268,
     "title": "Tensura: Chuyển Sinh Thành Slime",
     "category": "isekai",
     "itemCount": 21,
@@ -297,6 +311,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-sao",
+    "createdAt": "2026-09-09T08:00:00.000Z",
+    "favoriteCount": 128,
     "title": "Sword Art Online: Thế Giới Kiếm Ảo",
     "category": "scifi",
     "itemCount": 27,
@@ -329,6 +345,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-spice-wolf",
+    "createdAt": "2026-09-06T08:00:00.000Z",
+    "favoriteCount": 310,
     "title": "Sói Và Gia Vị: Hành Trình Thương Gia",
     "category": "fantasy",
     "itemCount": 24,
@@ -361,6 +379,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-monogatari",
+    "createdAt": "2026-09-03T08:00:00.000Z",
+    "favoriteCount": 172,
     "title": "Bakemonogatari: Quái Vật Truyện",
     "category": "mystery",
     "itemCount": 28,
@@ -393,6 +413,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-konosuba",
+    "createdAt": "2026-08-31T08:00:00.000Z",
+    "favoriteCount": 224,
     "title": "KonoSuba: Mở Ra Thế Giới Tuyệt Vời!",
     "category": "isekai",
     "itemCount": 17,
@@ -425,6 +447,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-overlord",
+    "createdAt": "2026-08-28T08:00:00.000Z",
+    "favoriteCount": 98,
     "title": "Overlord: Kẻ Thống Trị Lăng Mộ",
     "category": "isekai",
     "itemCount": 16,
@@ -457,6 +481,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-zeroth-maria",
+    "createdAt": "2026-08-25T08:00:00.000Z",
+    "favoriteCount": 147,
     "title": "Hộp Rỗng Và Maria Thứ 0",
     "category": "mystery",
     "itemCount": 7,
@@ -489,6 +515,8 @@ export const mockCollections: CollectionDeck[] = [
   },
   {
     "id": "ln-three-days",
+    "createdAt": "2026-08-22T08:00:00.000Z",
+    "favoriteCount": 203,
     "title": "Ba Ngày Hạnh Phúc",
     "category": "romcom",
     "itemCount": 1,
