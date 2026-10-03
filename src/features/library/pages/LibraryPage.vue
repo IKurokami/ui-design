@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { computed, ref, onBeforeUnmount } from 'vue'
+import { computed, ref, onBeforeUnmount, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import LibrarySidebar from '../components/LibrarySidebar.vue'
 import LibraryStickyHeader from '../components/LibraryStickyHeader.vue'
 import CollectionDeckGrid from '../components/CollectionDeckGrid.vue'
 import AmbientBackdrop from '../components/AmbientBackdrop.vue'
 import { mockCategories, mockCollections } from '../data/mock-collections'
-import type { CollectionDeck, SortMode, ViewMode } from '../types'
+import type { CollectionDeck, SortMode, Story, ViewMode } from '../types'
 import { sortCollections } from '../sorting'
 import type { AmbientColors } from '../ambient-surface'
 import { extractAmbientPalette } from '../ambient-palette'
+import { createApiClient } from '../../../services/api-client'
 import '../library-theme.css'
 
 const activeCategory = ref('all')
@@ -39,8 +41,67 @@ async function onDeckHover(deck: CollectionDeck, element: HTMLElement) {
   if (!disposed) ambient.value?.spawn(colors ?? deck.ambientColors ?? ['#79a5a0', '#b4a0d0', '#e1b486'], origin)
 }
 
+const route = useRoute()
+const router = useRouter()
+const client = createApiClient()
+const userStories = ref<Story[]>([])
+
+async function loadStories() {
+  try {
+    const list = await client.request<Story[]>('/api/stories')
+    if (Array.isArray(list)) {
+      userStories.value = list
+    }
+  } catch {
+    // Graceful fallback
+  }
+}
+
+onMounted(() => {
+  loadStories()
+  if (route.query.create === 'true' || route.query.create === '1') {
+    router.push('/library/editor')
+  }
+})
+
+const userDecks = computed<CollectionDeck[]>(() => {
+  return userStories.value.map(s => {
+    const defaultCover = 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=80'
+    const cover = s.coverUrl || defaultCover
+    let covers: [string, string, string] = [cover, cover, cover]
+
+    if (s.chapters?.[0]?.illustrations) {
+      try {
+        const imgs = JSON.parse(s.chapters[0].illustrations)
+        if (Array.isArray(imgs) && imgs.length > 0) {
+          covers = [
+            imgs[0] || cover,
+            imgs[1] || imgs[0] || cover,
+            imgs[2] || imgs[0] || cover,
+          ]
+        }
+      } catch {}
+    }
+
+    return {
+      id: s.id,
+      title: s.title,
+      category: s.category || 'all',
+      itemCount: s.chapters?.length || 1,
+      totalFiles: s.chapters?.length || 1,
+      newCount: 1,
+      createdAt: s.createdAt,
+      covers,
+      tags: s.tags ? s.tags.split(',').map(t => t.trim()) : ['Tác phẩm mới'],
+      isUserCreated: true,
+    }
+  })
+})
+
+const allCollections = computed(() => [...userDecks.value, ...mockCollections])
+
 const filteredDecks = computed(() => {
-  return mockCollections.filter(deck => {
+  return allCollections.value.filter(deck => {
     // Filter by Category
     if (activeCategory.value !== 'all') {
       if (activeCategory.value === 'recent') {
@@ -76,6 +137,9 @@ const sortedDecks = computed(() => sortCollections(filteredDecks.value, sortMode
 
 function onSelectDeck(deck: CollectionDeck) {
   selectedDeck.value = deck
+  if (deck.isUserCreated) {
+    router.push(`/library/editor/${deck.id}`)
+  }
 }
 </script>
 
@@ -93,7 +157,7 @@ function onSelectDeck(deck: CollectionDeck) {
           <LibraryStickyHeader
             :scroll-element="scrollArea"
             title="Thư viện"
-            :total-collections="mockCollections.length"
+            :total-collections="allCollections.length"
             :result-count="filteredDecks.length"
             :categories="mockCategories"
             v-model:activeCategory="activeCategory"

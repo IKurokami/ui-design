@@ -156,6 +156,8 @@ captureMotion(oldRoot)
 
 `NavigationStack` tự gọi pipeline trước/sau render. Nó chọn morph page nếu tìm được cặp chung; nếu không có thì dùng push/pop cả màn hình. Bộ máy không chứa selector hay tên field của Auth.
 
+Transition giữa các page dùng `useRouteDirection`: mở page mới chạy push; quay lại page còn trong chuỗi đang mở chạy pop, kể cả link gọi `router.push()` hoặc `router.replace()`. Chuỗi được rút gọn khi quay lại để mở một page đã đóng sau đó vẫn chạy push. Back/Forward nhận hướng từ [`RouterHistory.listen`](https://router.vuejs.org/api/interfaces/routerhistory#listen), ưu tiên hướng duyệt history thay vì suy từ đường dẫn. Mỗi vị trí browser history giữ bản sao chuỗi tương ứng để đồng bộ sau Back/Forward; navigation thất bại không cập nhật chuỗi. Các route Auth dùng chung một page ngoài, tiếp tục giữ quy tắc Auth nằm trên Home/Library.
+
 Khi tự quản lý DOM, gọi API trực tiếp:
 
 ```ts
@@ -205,7 +207,7 @@ Khi đổi hướng giữa chừng, pause timeline trước khi kill để `Flip
 
 ## Lifecycle, giới hạn và kiểm tra
 
-Header Library dùng timeline GSAP riêng trong `LibraryStickyHeader.vue`, không còn dùng `useAutoMotion`/FLIP hoặc ghost để gom nhãn. Trạng thái gồm `inline`, `compact`, `overlay`: cuộn xuống dù chỉ 1px sẽ thu gọn; cuộn về đầu, focus và click control không tự mở lại. Mở thủ công khi đã cuộn sẽ chuyển cùng DOM qua Teleport ra `body`, định vị absolute theo toàn chiều rộng scroll content. Nền trắng scaleY/fade trong 0.42 giây khi mở, 0.3 giây khi đóng; nội dung trượt nhẹ/fade riêng để chữ không bị scale. Portal giữ nguyên đến khi đóng xong, còn vị trí trong luồng giữ 64px. Chỉ chế độ overlay có nền trắng; các trạng thái khác trong suốt. Timeline cũ bị hủy khi đổi hướng, resize hoặc unmount; reduced motion bỏ qua animation.
+Header Library kết hợp GSAP Flip cho vị trí/kích thước của search, thể loại, sort, từng nút chế độ xem và nút mở/đóng; timeline GSAP riêng animate nền trắng bằng scaleY/opacity. Chụp `Flip.getState` trước khi Vue đổi layout hoặc Teleport, rồi `Flip.from` chạy trên các control thật trong 0.6 giây với `scale: false`, `nested: true`, `absolute: true`. Icon và nhãn được đo cùng nút cha; phần giữ chỗ vô hình bảo toàn các ô flex/grid ở bố cục đích trong lúc control chuyển sang absolute. Sau 0.6 giây, khôi phục style và bỏ phần giữ chỗ trong cùng một bước; nhãn nút bắt đầu fade ở giây 0.62 trong 0.2 giây, khi vị trí và nền trắng đã ổn định. Nhãn giữ DOM và không xuống dòng khi nút đổi chiều rộng. Trạng thái gồm `inline`, `compact`, `overlay`: cuộn xuống dù chỉ 1px sẽ thu gọn; cuộn về đầu, focus và click control không tự mở lại. Mở khi đã cuộn dùng portal ngoài container, định vị absolute theo toàn chiều rộng content. Nền trắng có góc thẳng và chỉ hiện ở overlay; các trạng thái khác trong suốt. Portal giữ nguyên đến khi đóng xong, vị trí trong luồng giữ 64px. Header luôn chạy animation theo yêu cầu thiết kế; không bỏ animation theo system reduced motion. Timeline bị hủy khi đảo chiều, resize hoặc unmount; phần giữ chỗ, inline style và Flip identity được dọn sau animation.
 
 - Snapshot và animation chỉ thuộc một root/controller, không có cache key toàn cục hoặc trạng thái form trong storage.
 - Exit của list dùng bản sao thị giác vì Vue đã bỏ node khỏi DOM. Bản sao `inert`, `aria-hidden`, không nhận pointer; xóa ID/handler và giá trị control. Không gắn lại control cũ vào form thật.

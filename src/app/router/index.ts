@@ -15,6 +15,18 @@ export const router = createRouter({
       component: () => import('../../features/library/pages/LibraryPage.vue'),
       meta: { title: 'Tủ sách cá nhân', layout: 'dashboard', requiresAuth: true },
     },
+    {
+      path: '/profile',
+      name: 'profile',
+      component: () => import('../../features/profile/pages/ProfilePage.vue'),
+      meta: { title: 'Hồ sơ cá nhân', layout: 'dashboard', requiresAuth: true },
+    },
+    {
+      path: '/library/editor/:id?',
+      name: 'story-editor',
+      component: () => import('../../features/library/components/StoryEditor.vue'),
+      meta: { title: 'Đăng & Soạn thảo truyện', layout: 'dashboard', requiresAuth: true },
+    },
     { path: '/dashboard', redirect: '/library' },
     { path: '/login', name: 'login', component: LoginPage, meta: { title: 'Đăng nhập', layout: 'auth' } },
     { path: '/register', name: 'register', component: RegisterPage, meta: { title: 'Tạo tài khoản', layout: 'auth' } },

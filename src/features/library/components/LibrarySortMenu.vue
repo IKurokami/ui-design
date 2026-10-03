@@ -67,12 +67,12 @@ watch(() => props.compact, () => close())
 
 <template>
   <div class="sort-control" :class="{ 'is-compact': compact }" @click.stop @focusin.stop>
-    <button ref="trigger" type="button" class="sort-trigger" :aria-label="'Sắp xếp: ' + label" :title="'Sắp xếp: ' + label"
+    <button ref="trigger" type="button" class="sort-trigger" data-library-flip="sort" :aria-label="'Sắp xếp: ' + label" :title="'Sắp xếp: ' + label"
       aria-haspopup="menu" :aria-expanded="open" :aria-controls="open ? menuId : undefined"
       @click="open ? close() : show()" @keydown.down.prevent="show()" @keydown.up.prevent="show()">
-      <span class="sort-icon"><ArrowDownUp :size="17" aria-hidden="true" /></span>
-      <span v-if="!compact" class="sort-label">{{ label }}</span>
-      <span v-if="!compact" class="sort-chevron"><ChevronDown :size="13" aria-hidden="true" /></span>
+      <span class="sort-icon" data-library-part="icon"><ArrowDownUp :size="17" aria-hidden="true" /></span>
+      <span class="sort-label" data-library-part="label">{{ label }}</span>
+      <span class="sort-chevron" data-library-part="chevron"><ChevronDown :size="13" aria-hidden="true" /></span>
     </button>
     <Teleport to="body">
       <div v-if="open" :id="menuId" ref="menu" class="library-sort-menu" :style="position" role="menu" aria-label="Sắp xếp truyện" @keydown="onKeydown" @click.stop>
@@ -88,6 +88,9 @@ watch(() => props.compact, () => close())
 <style scoped>
 .sort-control { flex-shrink: 0; }
 .sort-icon, .sort-chevron { display: inline-flex; flex-shrink: 0; }
+.sort-trigger { position: relative; }
+.sort-label { white-space: nowrap; }
+.is-compact .sort-label, .is-compact .sort-chevron { display: none; }
 .sort-trigger { display: flex; align-items: center; justify-content: center; gap: 9px; height: 48px; padding: 0 14px; border: 0; border-radius: 14px; background: color-mix(in oklab, var(--library-accent) 6%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: var(--library-control-ink); font: inherit; font-size: 12px; cursor: pointer; }
 .sort-trigger:hover, .sort-trigger:focus-visible, .sort-trigger[aria-expanded="true"] { outline: none; background: color-mix(in oklab, var(--library-accent) 17%, transparent); }
 .is-compact .sort-trigger { width: 38px; height: 42px; padding: 0; border-radius: 11px; }

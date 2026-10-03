@@ -36,7 +36,7 @@ function resetFilters() {
 <template>
   <div class="filter-bar" :class="{ 'is-compact': compact }">
     <div class="search-mode-row">
-      <div class="search-input-wrapper">
+      <div class="search-input-wrapper" data-library-flip="search">
         <Search :size="18" class="search-icon" aria-hidden="true" />
         <input ref="searchInput" :value="searchQuery" type="search" aria-label="Tìm kiếm tên truyện hoặc thẻ"
           placeholder="Tìm truyện…"
@@ -47,26 +47,27 @@ function resetFilters() {
         @update:model-value="emit('update:sortMode', $event)" />
       <div class="mode-switcher" role="group" aria-label="Kiểu hiển thị">
         <button v-for="mode in (['deck', 'list'] as const)" :key="mode" type="button" class="mode-btn" :class="{ active: viewMode === mode }"
-          :aria-label="mode === 'deck' ? 'Dạng thẻ xếp' : 'Dạng danh sách'" :aria-pressed="viewMode === mode"
+          :data-library-flip="'view:' + mode" :aria-label="mode === 'deck' ? 'Dạng thẻ xếp' : 'Dạng danh sách'" :aria-pressed="viewMode === mode"
           :title="mode === 'deck' ? 'Dạng thẻ xếp' : 'Dạng danh sách'" @click="emit('update:viewMode', mode)">
-          <span class="mode-icon">
+          <span class="mode-icon" data-library-part="icon">
             <Layers v-if="mode === 'deck'" :size="17" /><List v-else :size="17" />
           </span>
-          <span v-if="!compact" class="mode-label">{{ mode === 'deck' ? 'Thẻ xếp' : 'Danh sách' }}</span>
+          <span class="mode-label" data-library-part="label">{{ mode === 'deck' ? 'Thẻ xếp' : 'Danh sách' }}</span>
         </button>
       </div>
     </div>
     <div id="library-category-filters" class="category-tabs-row">
       <div class="category-options" role="group" aria-label="Thể loại truyện">
         <button v-for="cat in visibleCategories" :key="cat.id" :data-category="cat.id" type="button" class="category-pill"
+          :data-library-flip="cat.id === 'all' ? 'category' : undefined"
           :aria-pressed="compact ? undefined : activeCategory === cat.id"
           :aria-label="compact ? 'Mở các thể loại. Đang chọn: ' + activeCategoryLabel : undefined"
           :aria-expanded="compact ? false : undefined" :class="{ active: compact || activeCategory === cat.id }"
           @click="compact ? emit('expand') : emit('update:activeCategory', cat.id)">
-          <SlidersHorizontal v-if="cat.id === 'all'" :size="14" aria-hidden="true" />
+          <span v-if="cat.id === 'all'" class="pill-icon" data-library-part="icon"><SlidersHorizontal :size="14" aria-hidden="true" /></span>
           <Check v-else-if="activeCategory === cat.id" :size="13" aria-hidden="true" />
-          <span class="pill-label">{{ compact ? (activeCategory === 'all' ? 'Thể loại' : activeCategoryLabel) : (cat.id === 'all' ? 'Tất cả' : cat.label) }}</span>
-          <ChevronDown v-if="compact" class="pill-chevron" :size="13" aria-hidden="true" />
+          <span class="pill-label" :data-library-part="cat.id === 'all' ? 'label' : undefined">{{ compact ? (activeCategory === 'all' ? 'Thể loại' : activeCategoryLabel) : (cat.id === 'all' ? 'Tất cả' : cat.label) }}</span>
+          <span v-if="cat.id === 'all'" class="pill-chevron" data-library-part="chevron"><ChevronDown :size="13" aria-hidden="true" /></span>
         </button>
         <button v-if="!compact && hasFilters" type="button" class="reset-filters" @click="resetFilters"><X :size="13" /> Xóa bộ lọc</button>
       </div>
@@ -89,7 +90,12 @@ function resetFilters() {
 .mode-btn { display: flex; align-items: center; justify-content: center; gap: 8px; height: 38px; padding: 0 13px; border: 0; border-radius: 10px; background: transparent; color: var(--library-muted); font-size: 12px; cursor: pointer; transition: background-color .18s, color .18s; }
 .mode-btn.active { background: color-mix(in oklab, var(--library-accent) 16%, transparent); color: var(--library-accent); font-weight: 650; }
 .mode-btn:not(.active):hover { color: var(--library-ink); }
-.mode-icon { display: inline-flex; flex-shrink: 0; }
+.mode-icon, .pill-icon, .pill-chevron { display: inline-flex; flex-shrink: 0; }
+.mode-btn, .category-pill { position: relative; }
+.mode-label, .pill-label { min-width: 0; white-space: nowrap; }
+.pill-chevron { display: none; }
+.is-compact .pill-chevron { display: inline-flex; }
+.is-compact .mode-label { display: none; }
 .category-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .category-pill { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 34px; padding: 7px 12px; border: 0; border-radius: 10px; background: var(--control-surface); color: var(--library-muted); font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; transition: background-color .18s, color .18s; }
 .category-pill > svg { flex-shrink: 0; }

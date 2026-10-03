@@ -17,6 +17,7 @@ export interface CollectionDeck {
   illustrations?: string[]
   tags: string[]
   ambientColors?: [string, string, string]
+  isUserCreated?: boolean
 }
 
 export interface CategoryFilter {
@@ -28,3 +29,29 @@ export interface CategoryFilter {
 
 export type ViewMode = 'deck' | 'list'
 export type SortMode = 'title-asc' | 'title-desc' | 'newest' | 'oldest' | 'favorites'
+
+export interface Chapter {
+  id: string
+  storyId: string
+  chapterNumber: number
+  title: string
+  content: string
+  illustrations?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface Story {
+  id: string
+  userId: string
+  authorName?: string
+  title: string
+  description?: string
+  coverUrl?: string
+  category?: string
+  tags?: string
+  status?: string
+  createdAt?: string
+  updatedAt?: string
+  chapters?: Chapter[]
+}

@@ -10,9 +10,7 @@
   --sage-light: #edf0e7;
   --placeholder: #8b9580;
   --danger: #aa4b3f;
-  --serif: 'Playfair Display', Georgia, serif;
-  --sans: 'Be Vietnam Pro', system-ui, sans-serif;
+  --serif: 'Lora', 'Playfair Display', 'Merriweather', serif;
+  --sans: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-reading: 'Lora', 'Merriweather', 'Be Vietnam Pro', serif;
 }
-
-
-

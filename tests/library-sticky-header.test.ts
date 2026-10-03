@@ -14,6 +14,7 @@ afterEach(() => {
 })
 const rect = (left: number, top: number, width: number, height: number) => ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() {} })
 const ui = () => new DOMWrapper(document.querySelector<HTMLElement>('.library-sticky-header')!)
+const headerTimeline = () => gsap.getById('library-header-transition') as gsap.core.Timeline
 async function finishMotion() {
   await flushPromises()
   gsap.globalTimeline.getChildren(false, false, true).forEach(animation => animation.totalProgress(1))
@@ -45,6 +46,43 @@ async function header(initialScroll = 0) {
   const body = ui().get('.toolbar-body').element as HTMLElement
   const toolbar = ui().element as HTMLElement
   const slot = wrapper.get('.library-header-slot').element as HTMLElement
+  for (const element of toolbar.querySelectorAll<HTMLElement>('[data-library-flip]')) {
+    const bounds = () => {
+      const compact = toolbar.classList.contains('is-compact')
+      switch (element.dataset.libraryFlip) {
+        // jsdom has no layout engine. Supply viewport positions with fixed
+        // dimensions so Flip's translation path can be tested independently.
+        case 'search': return rect(118, compact ? 30 : 110, 560, 48)
+        case 'sort': return rect(compact ? 730 : 694, compact ? 30 : 110, 136, 48)
+        case 'view:deck': return rect(compact ? 780 : 844, compact ? 30 : 110, 56, 38)
+        case 'view:list': return rect(compact ? 839 : 903, compact ? 30 : 110, 56, 38)
+        case 'category': return rect(compact ? 582 : 118, compact ? 30 : 176, 84, 34)
+        default: return rect(928, compact ? 30 : 48, 36, 36)
+      }
+    }
+    vi.spyOn(element, 'getBoundingClientRect').mockImplementation(bounds)
+    Object.defineProperties(element, {
+      offsetWidth: { configurable: true, get: () => bounds().width },
+      offsetHeight: { configurable: true, get: () => bounds().height },
+    })
+  }
+  for (const part of toolbar.querySelectorAll<HTMLElement>('[data-library-part]')) {
+    const bounds = () => {
+      if (getComputedStyle(part).display === 'none') return rect(0, 0, 0, 0)
+      const parent = part.closest<HTMLElement>('[data-library-flip]')!
+      const frame = parent.getBoundingClientRect()
+      const icon = part.dataset.libraryPart === 'icon'
+      const compact = toolbar.classList.contains('is-compact')
+      const width = icon ? 17 : part.dataset.libraryPart === 'chevron' ? 13 : 56
+      const inset = icon ? compact ? 10 : 14 : 39
+      return rect(frame.left + inset, frame.top + (frame.height - 17) / 2, width, 17)
+    }
+    vi.spyOn(part, 'getBoundingClientRect').mockImplementation(bounds)
+    Object.defineProperties(part, {
+      offsetWidth: { configurable: true, get: () => bounds().width },
+      offsetHeight: { configurable: true, get: () => bounds().height },
+    })
+  }
   vi.spyOn(body, 'getBoundingClientRect').mockImplementation(() => rect(118, 20, 824, toolbar.classList.contains('is-compact') ? 64 : 264))
   vi.spyOn(slot, 'getBoundingClientRect').mockImplementation(() => rect(118, 20, 824, parseFloat(slot.style.height) || (slot.classList.contains('has-compact-height') ? 64 : 264)))
   await finishMotion()
@@ -58,7 +96,7 @@ async function header(initialScroll = 0) {
 }
 
 describe('Library header state and panel animation', () => {
-  it('collapses on the first pixel, removes the old Flip animation and retains real controls', async () => {
+  it('collapses on the first pixel with real Flip position tweens and retains real controls', async () => {
     const { scrollTo, compact } = await header()
     const flip = vi.spyOn(Flip, 'from')
     const input = ui().get('input').element as HTMLInputElement
@@ -74,9 +112,26 @@ describe('Library header state and panel animation', () => {
     expect(ui().get('input').element).toBe(input)
     expect(input.value).toBe('Overlord')
     expect(document.activeElement).toBe(input)
-    expect(flip).not.toHaveBeenCalled()
+    expect(flip).toHaveBeenCalledOnce()
+    expect(flip.mock.calls[0]![1]).toMatchObject({ duration: .6, scale: false })
+    const search = ui().get('.search-input-wrapper').element
+    const movingItems = flip.mock.calls[0]![1]!.targets as Element[]
+    expect(movingItems).toContain(search)
+    expect(movingItems).toContain(ui().get('.sort-trigger').element)
+    expect(movingItems).toContain(ui().get('[data-library-flip="view:deck"]').element)
+    expect(movingItems).toContain(ui().get('[data-library-flip="view:list"]').element)
+    expect(movingItems).toContain(ui().get('.category-pill').element)
+    const motion = headerTimeline()
+    motion.pause().time(.12)
+    const earlyY = Number(gsap.getProperty(search, 'y'))
+    motion.time(.3)
+    const middleY = Number(gsap.getProperty(search, 'y'))
+    expect(Math.abs(earlyY)).toBeGreaterThan(10)
+    expect(Math.abs(middleY)).toBeLessThan(Math.abs(earlyY))
     expect(document.querySelector('[data-motion-overlay]')).toBeNull()
     await finishMotion()
+    expect((search as HTMLElement).style.transform).toBe('')
+    expect(search.hasAttribute('data-flip-id')).toBe(false)
   })
 
   it('never expands from scroll corrections, focus or clicks while manually collapsed at the top', async () => {
@@ -97,11 +152,50 @@ describe('Library header state and panel animation', () => {
     expect(ui().classes()).not.toContain('is-floating')
   })
 
+  it('moves nested icons and buttons in absolute space, then reveals text after the layout settles', async () => {
+    const { scrollTo } = await header()
+    await scrollTo(20)
+    await finishMotion()
+    const flip = vi.spyOn(Flip, 'from')
+    const sortIcon = ui().get('.sort-icon').element as HTMLElement
+    const sortLabel = ui().get('.sort-label').element as HTMLElement
+    const input = ui().get('input').element
+    await ui().get('.header-expand-btn').trigger('click')
+    await flushPromises()
+    expect(flip.mock.calls[0]![1]).toMatchObject({ nested: true, absolute: true, scale: false })
+    expect(flip.mock.calls[0]![1]!.targets).toContain(sortIcon)
+    const animation = headerTimeline().pause().time(.3)
+    expect((ui().get('.sort-trigger').element as HTMLElement).style.position).toBe('absolute')
+    expect(sortIcon.style.position).toBe('absolute')
+    expect(Number(gsap.getProperty(sortIcon, 'scaleX'))).toBe(1)
+    expect(Number(gsap.getProperty(sortIcon, 'scaleY'))).toBe(1)
+    const searchSlot = ui().get('.search-input-wrapper').element.nextElementSibling as HTMLElement
+    expect(searchSlot.hasAttribute('data-library-flow-slot')).toBe(true)
+    expect(searchSlot.style.width).toBe('560px')
+    expect(searchSlot.style.visibility).toBe('hidden')
+    expect(Number(gsap.getProperty(sortLabel, 'opacity'))).toBe(0)
+    animation.time(.61)
+    expect(Number(gsap.getProperty(ui().get('.library-panel-backdrop').element, 'scaleY'))).toBe(1)
+    expect(document.querySelector('[data-library-flow-slot]')).toBeNull()
+    expect(sortIcon.style.position).toBe('')
+    expect(sortIcon.style.transform).toBe('')
+    expect(Number(gsap.getProperty(sortLabel, 'opacity'))).toBe(0)
+    animation.time(.72)
+    expect(Number(gsap.getProperty(sortLabel, 'opacity'))).toBeGreaterThan(0)
+    expect(Number(gsap.getProperty(sortLabel, 'opacity'))).toBeLessThan(1)
+    await finishMotion()
+    expect(ui().get('input').element).toBe(input)
+    expect(ui().get('.sort-icon').element).toBe(sortIcon)
+    expect(ui().get('.sort-label').element).toBe(sortLabel)
+    expect(sortIcon.hasAttribute('data-flip-id')).toBe(false)
+    expect(sortLabel.style.visibility).toBe('')
+  })
+
   it('opens full content width outside clipping ancestors and animates the white surface in both directions', async () => {
     const { scrollTo, scroll, slot } = await header()
     await scrollTo(100)
     await finishMotion()
-    const timelineSpy = vi.spyOn(gsap, 'timeline')
+    const flip = vi.spyOn(Flip, 'from')
     const input = ui().get('input').element
     await ui().get('.header-expand-btn').trigger('click')
     await flushPromises()
@@ -115,16 +209,20 @@ describe('Library header state and panel animation', () => {
     expect(ui().get('input').element).toBe(input)
     expect(slot.classList.contains('has-compact-height')).toBe(true)
     expect(scroll.scrollTop).toBe(100)
-    const opening = timelineSpy.mock.results.at(-1)!.value as gsap.core.Timeline
+    const opening = headerTimeline()
     opening.progress(.5)
+    expect(flip).toHaveBeenCalledOnce()
+    expect(Math.abs(Number(gsap.getProperty(ui().get('.search-input-wrapper').element, 'y')))).toBeGreaterThan(1)
     expect(Number(gsap.getProperty(background, 'scaleY'))).toBeGreaterThan(0)
     expect(Number(gsap.getProperty(background, 'scaleY'))).toBeLessThan(1)
     await finishMotion()
     await ui().get('.header-expand-btn').trigger('click')
     await flushPromises()
     expect(panel.parentElement).toBe(document.body)
-    const closing = timelineSpy.mock.results.at(-1)!.value as gsap.core.Timeline
+    const closing = headerTimeline()
     closing.progress(.5)
+    expect(flip).toHaveBeenCalledTimes(2)
+    expect(Math.abs(Number(gsap.getProperty(ui().get('.search-input-wrapper').element, 'y')))).toBeGreaterThan(1)
     expect(Number(gsap.getProperty(background, 'scaleY'))).toBeGreaterThan(0)
     expect(Number(gsap.getProperty(background, 'scaleY'))).toBeLessThan(1)
     await finishMotion()
@@ -169,6 +267,8 @@ describe('Library header state and panel animation', () => {
     expect(ui().get('input').element).toBe(input)
     expect(ui().classes()).not.toContain('is-floating')
     expect((ui().get('.toolbar-body').element as HTMLElement).style.transform).toBe('')
+    expect(document.querySelector('[data-library-flow-slot]')).toBeNull()
+    expect(ui().findAll('[data-library-part]')).toSatisfy((parts: DOMWrapper<Element>[]) => parts.every(part => !(part.element as HTMLElement).style.position))
   })
 
   it('updates portal bounds on resize and closes on outside pointer input', async () => {
@@ -192,19 +292,25 @@ describe('Library header state and panel animation', () => {
     expect(compact()).toBe(true)
   })
 
-  it('respects reduced motion for both the controls and white background', async () => {
+  it('keeps the requested header animation enabled with system reduced-motion settings', async () => {
     const original = window.matchMedia
     window.matchMedia = vi.fn().mockReturnValue({ matches: true })
     try {
       const { scrollTo } = await header()
-      const timelineSpy = vi.spyOn(gsap, 'timeline')
+      const flipSpy = vi.spyOn(Flip, 'from')
       await scrollTo(1)
       await ui().get('.header-expand-btn').trigger('click')
       await flushPromises()
       expect(ui().classes()).toContain('is-floating')
-      expect(timelineSpy).not.toHaveBeenCalled()
+      expect(flipSpy).toHaveBeenCalledTimes(2)
+      const animation = headerTimeline()
+      expect(animation.duration()).toBeGreaterThanOrEqual(.6)
+      animation.pause().time(.3)
+      const background = ui().get('.library-panel-backdrop').element
+      expect(Number(gsap.getProperty(background, 'scaleY'))).toBeGreaterThan(0)
+      expect(Number(gsap.getProperty(background, 'scaleY'))).toBeLessThan(1)
       await ui().get('.header-expand-btn').trigger('click')
-      await flushPromises()
+      await finishMotion()
       expect(ui().classes()).not.toContain('is-floating')
     } finally { window.matchMedia = original }
   })

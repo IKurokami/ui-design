@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import {
   Home,
   BookOpen,
@@ -10,16 +10,20 @@ import {
   CheckCircle2,
   Settings,
   LogOut,
+  PenTool,
 } from '@lucide/vue'
 import { useAuthStore } from '../../../stores/auth.store'
 import { createApiClient } from '../../../services/api-client'
 import UserAvatar from '../../../components/ui/UserAvatar.vue'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 // Mặc định ở trang Library là tab Tổng quan
 const activeTab = ref<'home' | 'library' | 'reading'>('home')
+const isProfileActive = computed(() => route?.path === '/profile')
+const isEditorActive = computed(() => route?.path?.startsWith('/library/editor'))
 
 const user = computed(() => authStore.user)
 const userDisplayName = computed(() => user.value?.displayName || '')
@@ -60,6 +64,25 @@ onMounted(() => {
   fetchUserProfile()
 })
 
+function handleNav(tab: 'home' | 'library' | 'reading') {
+  activeTab.value = tab
+  if (route.path !== '/library') {
+    router.push('/library')
+  }
+}
+
+function goToProfile() {
+  if (route.path !== '/profile') {
+    router.push('/profile')
+  }
+}
+
+function goToEditor() {
+  if (route.path !== '/library/editor') {
+    router.push('/library/editor')
+  }
+}
+
 async function handleLogout() {
   await authStore.logout()
   router.push('/login')
@@ -79,48 +102,64 @@ async function handleLogout() {
       <button
         type="button"
         class="nav-item"
-        :class="{ active: activeTab === 'home' }"
+        :class="{ active: activeTab === 'home' && !isProfileActive && !isEditorActive }"
         title="Tổng quan"
-        @click="activeTab = 'home'"
+        @click="handleNav('home')"
       >
         <Home
           :size="20"
           :stroke-width="1.6"
-          :fill="activeTab === 'home' ? 'currentColor' : 'none'"
+          :fill="activeTab === 'home' && !isProfileActive && !isEditorActive ? 'currentColor' : 'none'"
         />
-        <span v-if="activeTab !== 'home'" class="nav-label">Tổng quan</span>
+        <span v-if="(activeTab !== 'home' || isProfileActive || isEditorActive)" class="nav-label">Tổng quan</span>
       </button>
 
       <!-- 2. Tủ sách cá nhân -->
       <button
         type="button"
         class="nav-item"
-        :class="{ active: activeTab === 'library' }"
+        :class="{ active: activeTab === 'library' && !isProfileActive && !isEditorActive }"
         title="Tủ sách"
-        @click="activeTab = 'library'"
+        @click="handleNav('library')"
       >
         <BookOpen
           :size="20"
           :stroke-width="1.6"
-          :fill="activeTab === 'library' ? 'currentColor' : 'none'"
+          :fill="activeTab === 'library' && !isProfileActive && !isEditorActive ? 'currentColor' : 'none'"
         />
-        <span v-if="activeTab !== 'library'" class="nav-label">Tủ sách</span>
+        <span v-if="(activeTab !== 'library' || isProfileActive || isEditorActive)" class="nav-label">Tủ sách</span>
       </button>
 
       <!-- 3. Đang đọc / Dấu trang -->
       <button
         type="button"
         class="nav-item"
-        :class="{ active: activeTab === 'reading' }"
+        :class="{ active: activeTab === 'reading' && !isProfileActive && !isEditorActive }"
         title="Đang đọc"
-        @click="activeTab = 'reading'"
+        @click="handleNav('reading')"
       >
         <Bookmark
           :size="20"
           :stroke-width="1.6"
-          :fill="activeTab === 'reading' ? 'currentColor' : 'none'"
+          :fill="activeTab === 'reading' && !isProfileActive && !isEditorActive ? 'currentColor' : 'none'"
         />
-        <span v-if="activeTab !== 'reading'" class="nav-label">Đang đọc</span>
+        <span v-if="(activeTab !== 'reading' || isProfileActive || isEditorActive)" class="nav-label">Đang đọc</span>
+      </button>
+
+      <!-- 4. Đăng truyện / Soạn thảo -->
+      <button
+        type="button"
+        class="nav-item nav-item-create"
+        :class="{ active: isEditorActive }"
+        title="Đăng truyện mới"
+        @click="goToEditor"
+      >
+        <PenTool
+          :size="20"
+          :stroke-width="1.6"
+          :fill="isEditorActive ? 'currentColor' : 'none'"
+        />
+        <span v-if="!isEditorActive" class="nav-label">Đăng truyện</span>
       </button>
     </nav>
 
@@ -159,8 +198,10 @@ async function handleLogout() {
       <button
         type="button"
         class="action-btn avatar-btn"
-        :title="userDisplayName ? `Tài khoản: ${userDisplayName}` : 'Hồ sơ cá nhân'"
-        :aria-label="userDisplayName ? `Tài khoản: ${userDisplayName}` : 'Hồ sơ cá nhân'"
+        :class="{ active: isProfileActive }"
+        :title="userDisplayName ? `Tài khoản: ${userDisplayName} — Xem hồ sơ` : 'Hồ sơ cá nhân'"
+        :aria-label="userDisplayName ? `Tài khoản: ${userDisplayName} — Xem hồ sơ` : 'Hồ sơ cá nhân'"
+        @click="goToProfile"
       >
         <UserAvatar
           :src="userAvatar"
@@ -355,10 +396,17 @@ async function handleLogout() {
 .avatar-btn {
   padding: 0;
   overflow: visible;
+  border-radius: 50%;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .avatar-btn:hover {
   background-color: transparent;
+  transform: scale(1.05);
+}
+
+.avatar-btn.active {
+  box-shadow: 0 0 0 2.5px var(--green, #435a41);
 }
 
 .logout-btn:hover {
