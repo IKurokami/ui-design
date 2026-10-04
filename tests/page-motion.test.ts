@@ -125,6 +125,30 @@ describe('page and brand motion', () => {
     expect(element.style.willChange).toBe('')
     expect(element.style.boxShadow).toBe('')
   })
+  it.each(['reader-layout', 'studio-layout'])('uses coordinated enter and leave transitions for %s in both directions', className => {
+    const { pages, auth } = controller()
+    const library = document.createElement('main'), destination = document.createElement('main')
+    library.innerHTML = '<div class="library-layout"></div>'; destination.innerHTML = '<div class="' + className + '"></div>'
+    document.body.append(library, destination)
+    for (const push of [true, false]) {
+      auth.value = push
+      const outgoing = push ? library : destination, incoming = push ? destination : library
+      const entered = vi.fn(), left = vi.fn()
+      pages.leave(outgoing, left); pages.enter(incoming, entered)
+      expect(incoming.style.zIndex).toBe(push ? '2' : '1')
+      expect(outgoing.style.zIndex).toBe(push ? '1' : '2')
+      const leaving = gsap.getTweensOf(outgoing)[0]!, entering = gsap.getTweensOf(incoming)[0]!
+      expect(leaving).toBeDefined(); expect(entering).toBeDefined()
+      leaving.progress(.5); entering.progress(.5)
+      expect(entered).not.toHaveBeenCalled(); expect(left).not.toHaveBeenCalled()
+      leaving.progress(1); entering.progress(1)
+      expect(entered).toHaveBeenCalledOnce(); expect(left).toHaveBeenCalledOnce()
+      for (const element of [incoming, outgoing]) {
+        expect(element.style.transform).toBe(''); expect(element.style.pointerEvents).toBe('')
+        expect(element.style.zIndex).toBe(''); expect(gsap.getTweensOf(element)).toHaveLength(0)
+      }
+    }
+  })
   it('cleans up interrupted page motion so a rapid reversal can animate the same node', () => {
     const { pages, auth } = controller()
     const element = document.createElement('div')

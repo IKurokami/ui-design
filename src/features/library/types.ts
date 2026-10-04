@@ -9,15 +9,10 @@ export interface CollectionDeck {
   title: string
   category: string
   itemCount: number
-  totalFiles: number
-  newCount?: number
   createdAt?: string
-  favoriteCount?: number
-  covers: [string, string, string] // 3 covers for the layered stack effect
-  illustrations?: string[]
+  covers: string[] // Up to three distinct story images, primary cover first.
   tags: string[]
   ambientColors?: [string, string, string]
-  isUserCreated?: boolean
 }
 
 export interface CategoryFilter {
@@ -28,7 +23,7 @@ export interface CategoryFilter {
 }
 
 export type ViewMode = 'deck' | 'list'
-export type SortMode = 'title-asc' | 'title-desc' | 'newest' | 'oldest' | 'favorites'
+export type SortMode = 'title-asc' | 'title-desc' | 'newest' | 'oldest'
 
 export interface Chapter {
   id: string
@@ -48,6 +43,7 @@ export interface Story {
   title: string
   description?: string
   coverUrl?: string
+  previewImages?: string[]
   category?: string
   tags?: string
   status?: string
@@ -55,4 +51,12 @@ export interface Story {
   updatedAt?: string
   chapters?: Chapter[]
   chapterCount?: number
+  readingProgress?: ReadingProgress
+}
+
+export interface ReadingProgress {
+  chapterId: string
+  chapterNumber?: number
+  chapterTitle?: string
+  updatedAt?: string
 }

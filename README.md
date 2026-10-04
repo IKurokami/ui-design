@@ -50,7 +50,3 @@ Các trang thông tin điều khoản/quyền riêng tư chỉ mô tả bản gi
 `pnpm test` kiểm tra validation, lỗi chưa có backend, identity/history của stack, bảo toàn DOM và form khi pop, Back/Forward, chống push lặp, truy cập trực tiếp register scroll theo từng vùng, GSAP Flip thực tế, cleanup khi ngắt/unmount và reduced motion.
 
 Build gồm kiểm tra TypeScript trước khi tạo production bundle. Khi deploy, server cần SPA fallback về index.html để mở trực tiếp URL. Font Google có fallback serif/system nếu mất mạng.
-
-
-
-

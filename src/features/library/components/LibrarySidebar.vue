@@ -5,16 +5,14 @@ import {
   Home,
   BookOpen,
   Bookmark,
-  Heart,
-  Clock,
-  CheckCircle2,
-  Settings,
   LogOut,
   PenTool,
 } from '@lucide/vue'
 import { useAuthStore } from '../../../stores/auth.store'
 import { createApiClient } from '../../../services/api-client'
 import UserAvatar from '../../../components/ui/UserAvatar.vue'
+
+const props = defineProps<{ beforeLogout?: () => Promise<boolean> }>()
 
 const router = useRouter()
 const route = useRoute()
@@ -26,7 +24,7 @@ const isProfileActive = computed(() => route?.path === '/profile')
 const isEditorActive = computed(() => route?.path?.startsWith('/library/editor'))
 const isBookshelfActive = computed(() => route?.path === '/library/bookshelf' || route?.path === '/bookshelf')
 const isLibraryHomeActive = computed(() => route?.path === '/library' && !route?.query?.tab && !isEditorActive.value && !isProfileActive.value && !isBookshelfActive.value)
-const isReadingActive = computed(() => route?.path === '/library' && route?.query?.tab === 'reading')
+const isReadingActive = computed(() => route?.path?.startsWith('/library/stories/') || (route?.path === '/library' && route?.query?.tab === 'reading'))
 
 const user = computed(() => authStore.user)
 const userDisplayName = computed(() => user.value?.displayName || '')
@@ -102,6 +100,7 @@ function goToEditor() {
 }
 
 async function handleLogout() {
+  if (props.beforeLogout && !await props.beforeLogout()) return
   await authStore.logout()
   router.push('/login')
 }
@@ -181,36 +180,6 @@ async function handleLogout() {
       </button>
     </nav>
 
-    <!-- Sub Section / Thống kê & Phân loại truyện -->
-    <div class="sidebar-counters">
-      <!-- Yêu thích -->
-      <button type="button" class="counter-item" title="Truyện yêu thích">
-        <div class="counter-icon-wrap">
-          <Heart :size="18" :stroke-width="1.5" />
-          <span class="counter-num">48</span>
-        </div>
-        <span class="counter-text">Yêu thích</span>
-      </button>
-
-      <!-- Lịch sử đọc -->
-      <button type="button" class="counter-item" title="Lịch sử đọc gần đây">
-        <div class="counter-icon-wrap">
-          <Clock :size="18" :stroke-width="1.5" />
-          <span class="counter-num">12</span>
-        </div>
-        <span class="counter-text">Lịch sử</span>
-      </button>
-
-      <!-- Đã hoàn thành -->
-      <button type="button" class="counter-item" title="Truyện đã đọc xong">
-        <div class="counter-icon-wrap">
-          <CheckCircle2 :size="18" :stroke-width="1.5" />
-          <span class="counter-num">26</span>
-        </div>
-        <span class="counter-text">Đã xong</span>
-      </button>
-    </div>
-
     <!-- Bottom Settings & Actions -->
     <div class="sidebar-bottom">
       <button
@@ -227,10 +196,6 @@ async function handleLogout() {
           :name="userDisplayName"
           :size="34"
         />
-      </button>
-
-      <button type="button" class="action-btn" title="Cài đặt đọc truyện">
-        <Settings :size="18" />
       </button>
 
       <button type="button" class="action-btn logout-btn" title="Đăng xuất" @click="handleLogout">
@@ -327,60 +292,6 @@ async function handleLogout() {
   font-size: 10px;
   font-weight: 550;
   letter-spacing: -0.1px;
-  line-height: 1;
-}
-
-/* Counters */
-.sidebar-counters {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  margin-top: 28px;
-  width: 100%;
-}
-
-.counter-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  background: none;
-  border: 0;
-  color: var(--muted, #7b8073);
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 10px;
-  transition: all 0.15s ease;
-  width: 58px;
-}
-
-.counter-item:hover {
-  color: var(--sidebar-ink, #303b2f);
-  background-color: rgba(67, 90, 65, 0.05);
-}
-
-.counter-icon-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.counter-num {
-  position: absolute;
-  top: -4px;
-  left: calc(100% - 2px);
-  font-size: 9px;
-  font-weight: 600;
-  color: var(--muted, #7b8073);
-  white-space: nowrap;
-  line-height: 1;
-}
-
-.counter-text {
-  font-size: 9px;
-  color: var(--muted, #7b8073);
   line-height: 1;
 }
 

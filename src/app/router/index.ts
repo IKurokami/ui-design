@@ -21,6 +21,12 @@ export const router = createRouter({
       component: () => import('../../features/library/pages/BookshelfPage.vue'),
       meta: { title: 'Tủ sách của tôi', layout: 'dashboard', requiresAuth: true },
     },
+    {
+      path: '/library/stories/:id',
+      name: 'story-detail',
+      component: () => import('../../features/library/pages/StoryDetailPage.vue'),
+      meta: { title: 'Đọc truyện', layout: 'dashboard', requiresAuth: true },
+    },
     { path: '/bookshelf', redirect: '/library/bookshelf' },
     {
       path: '/profile',
@@ -50,6 +56,6 @@ export const router = createRouter({
 router.beforeEach(authGuard)
 
 router.afterEach(to => {
-  document.title = String(to.meta.title ?? 'Đọc sách') + ' — Mộc'
+  document.title = (to.name === 'library' && to.query.tab === 'reading' ? 'Đang đọc' : String(to.meta.title ?? 'Đọc sách')) + ' — Mộc'
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', to.name === 'home' ? '#090c09' : '#f6f5ef')
 })

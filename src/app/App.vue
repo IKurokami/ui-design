@@ -8,10 +8,12 @@ import InfoDialog from '../components/ui/InfoDialog.vue'
 import { infoDialogKey } from '../components/ui/info-dialog'
 import { usePageMotion } from '../animations/composables/usePageMotion'
 import { useRouteDirection } from '../animations/composables/useRouteDirection'
+import { providePageScrollRestoration } from '../animations/composables/usePageScrollRestoration'
 import PasswordResetDialog from '../features/auth/components/PasswordResetDialog.vue'
 import { passwordResetDialogKey } from '../features/auth/components/password-reset-dialog'
 const router = useRouter()
 const route = useRoute()
+providePageScrollRestoration()
 const isAuth = computed(() => route.meta.layout === 'auth' || route.path === '/login' || route.path === '/register')
 const isHome = computed(() => route.path === '/')
 const isDashboard = computed(() => route.meta.layout === 'dashboard' || route.path === '/library')

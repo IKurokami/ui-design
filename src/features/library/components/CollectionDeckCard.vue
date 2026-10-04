@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { BookOpen } from '@lucide/vue'
 import type { CollectionDeck } from '../types'
 
 const props = defineProps<{
   deck: CollectionDeck
+  preview?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -11,6 +13,16 @@ const emit = defineEmits<{
   hover: [deck: CollectionDeck, element: HTMLElement]
 }>()
 const root = ref<HTMLElement>()
+const failedCovers = ref<string[]>([])
+const covers = computed(() => {
+  const images = [...new Set(props.deck.covers)].filter(url => url && !failedCovers.value.includes(url)).slice(0, 3)
+  return images.length ? Array.from({ length: 3 }, (_, index) => images[index % images.length]) : []
+})
+watch(() => props.deck.covers, () => { failedCovers.value = [] }, { deep: true })
+function imageFailed(event: Event) {
+  const url = (event.currentTarget as HTMLImageElement).getAttribute('src')
+  if (url) failedCovers.value.push(url)
+}
 let hovered = false
 let focused = false
 function enter(source: 'pointer' | 'focus') {
@@ -24,54 +36,53 @@ function leave(source: 'pointer' | 'focus') {
   else focused = false
 }
 
-function handleImgError(e: Event, fallbackUrl: string) {
-  const target = e.target as HTMLImageElement
-  if (target && target.src !== fallbackUrl) {
-    target.src = fallbackUrl
-  }
-}
 </script>
 
 <template>
   <div
     ref="root"
     class="deck-card"
-    role="button"
-    tabindex="0"
-    @click="emit('click', deck)"
+    :role="preview ? 'group' : 'button'"
+    :tabindex="preview ? undefined : 0"
+    :class="{ 'deck-preview': preview }"
+    @click="!preview && emit('click', deck)"
+    @keydown.enter.prevent="!preview && emit('click', deck)"
+    @keydown.space.prevent="!preview && emit('click', deck)"
     @mouseenter="enter('pointer')"
     @mouseleave="leave('pointer')"
     @focus="enter('focus')"
     @blur="leave('focus')"
   >
     <div class="deck-stack">
+      <div v-if="!covers.length" class="cover-placeholder"><BookOpen :size="38" :stroke-width="1.2" aria-hidden="true" /></div>
       <!-- Back Card Left -->
-      <div class="card-layer card-back-left">
+      <div v-if="covers[1]" :key="'left:' + covers[1]" class="card-layer card-back-left">
         <img
           crossorigin="anonymous"
-          :src="deck.covers[0]"
-          :alt="`${deck.title} bìa 1`"
+          :src="covers[1]"
+          alt=""
           loading="lazy"
-          @error="handleImgError($event, deck.covers[1])"
+          @error="imageFailed"
         />
       </div>
 
       <!-- Back Card Right -->
-      <div class="card-layer card-back-right">
+      <div v-if="covers[2]" :key="'right:' + covers[2]" class="card-layer card-back-right">
         <img
           crossorigin="anonymous"
-          :src="deck.covers[2]"
-          :alt="`${deck.title} bìa 3`"
+          :src="covers[2]"
+          alt=""
           loading="lazy"
-          @error="handleImgError($event, deck.covers[1])"
+          @error="imageFailed"
         />
       </div>
 
       <!-- Front Center Card -->
-      <div class="card-layer card-front">
+      <div v-if="covers[0]" :key="'front:' + covers[0]" class="card-layer card-front">
         <img
           crossorigin="anonymous"
-          :src="deck.covers[1]"
+          @error="imageFailed"
+          :src="covers[0]"
           :alt="`${deck.title} bìa chính`"
           loading="lazy"
         />
@@ -80,18 +91,16 @@ function handleImgError(e: Event, fallbackUrl: string) {
 
     <!-- Info Section -->
     <div class="deck-info">
-      <h3 class="deck-title">{{ deck.title }}</h3>
+      <h3 v-if="deck.title" class="deck-title">{{ deck.title }}</h3>
       <div class="deck-stats">
-        <span>{{ deck.itemCount }} tập</span>
-        <span class="stat-dot">·</span>
-        <span>{{ deck.totalFiles.toLocaleString('vi-VN') }} minh họa</span>
-        <span v-if="deck.newCount" class="stat-badge">+{{ deck.newCount }}</span>
+        <span>{{ deck.itemCount.toLocaleString('vi-VN') }} chương</span>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.cover-placeholder { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 16px; background: color-mix(in oklab, var(--library-accent) 6%, transparent); color: var(--library-accent); }
 .deck-card {
   display: flex;
   flex-direction: column;
@@ -108,6 +117,7 @@ function handleImgError(e: Event, fallbackUrl: string) {
 .deck-card:hover {
   background-color: transparent;
 }
+.deck-preview { cursor: default; }
 
 .deck-card:focus-visible {
   outline: 2px solid var(--library-accent);
@@ -199,18 +209,4 @@ function handleImgError(e: Event, fallbackUrl: string) {
   font-weight: 500;
 }
 
-.stat-dot {
-  opacity: 0.6;
-}
-
-.stat-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 2px;
-  background-color: transparent;
-  color: var(--library-badge-ink);
-  font-size: 11px;
-  font-weight: 600;
-  margin-left: 2px;
-}
 </style>

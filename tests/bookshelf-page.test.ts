@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import BookshelfPage from '../src/features/library/pages/BookshelfPage.vue'
 
@@ -18,11 +18,62 @@ vi.mock('../src/services/api-client', () => ({
   }),
 }))
 
+enableAutoUnmount(afterEach)
+afterEach(() => vi.restoreAllMocks())
+
 describe('BookshelfPage - Tủ sách của tôi (Tác phẩm đã đăng)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
     mockPush.mockReset()
     mockRequest.mockReset()
+  })
+
+  it('uses the custom sort menu and keeps the selected order across grid and list views', async () => {
+    mockRequest.mockResolvedValueOnce([
+      { id: 'b', title: 'Bộ B', chapterCount: 2, createdAt: '2026-10-02', updatedAt: '2026-10-03' },
+      { id: 'a', title: 'Bộ A', chapterCount: 12, createdAt: '2026-10-03', updatedAt: '2026-10-02' },
+    ])
+    const wrapper = mount(BookshelfPage, {
+      attachTo: document.body,
+      global: { stubs: { AmbientBackdrop: true } },
+    })
+    try {
+      await flushPromises()
+      expect(wrapper.find('select').exists()).toBe(false)
+      expect(wrapper.findAll('.card-title').map(item => item.text())).toEqual(['Bộ B', 'Bộ A'])
+      const trigger = wrapper.get('.sort-trigger')
+      await trigger.trigger('keydown', { key: 'ArrowDown' })
+      await flushPromises()
+      const menu = document.querySelector<HTMLElement>('[role="menu"]')!
+      expect(menu.parentElement).toBe(document.body)
+      expect(document.activeElement?.textContent).toContain('Mới cập nhật')
+      expect([...menu.querySelectorAll('[role="menuitemradio"]')].map(item => item.textContent?.trim()))
+        .toEqual(['Mới cập nhật', 'Mới tạo', 'Nhiều chương', 'Tên A–Z'])
+
+      menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
+      expect(document.activeElement?.textContent).toContain('Tên A–Z')
+      ;(document.activeElement as HTMLButtonElement).click()
+      await flushPromises()
+      expect(document.querySelector('[role="menu"]')).toBeNull()
+      expect(document.activeElement).toBe(trigger.element)
+      expect(trigger.attributes('aria-label')).toBe('Sắp xếp: Tên A–Z')
+      expect(wrapper.findAll('.card-title').map(item => item.text())).toEqual(['Bộ A', 'Bộ B'])
+
+      await wrapper.get('[aria-label="Dạng danh sách"]').trigger('click')
+      expect(wrapper.findAll('.table-story-title').map(item => item.text())).toEqual(['Bộ A', 'Bộ B'])
+      for (const label of ['Mới tạo', 'Nhiều chương', 'Mới cập nhật']) {
+        await trigger.trigger('click')
+        const option = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
+          .find(item => item.textContent?.trim() === label)!
+        option.click()
+        await flushPromises()
+        expect(wrapper.findAll('.table-story-title').map(item => item.text()))
+          .toEqual(label === 'Mới cập nhật' ? ['Bộ B', 'Bộ A'] : ['Bộ A', 'Bộ B'])
+      }
+    } finally {
+      wrapper.unmount()
+    }
   })
 
   it('renders header, stats cards, and fetches user stories from /api/stories/mine', async () => {
@@ -72,17 +123,39 @@ describe('BookshelfPage - Tủ sách của tôi (Tác phẩm đã đăng)', () =
     expect(wrapper.text()).toContain('Bản nháp (1)')
   })
 
-  it('falls back to rich mock data when api returns empty or fails', async () => {
+  it('shows an empty bookshelf when the backend has no stories', async () => {
     mockRequest.mockResolvedValueOnce([])
-
     const wrapper = mount(BookshelfPage)
+    await flushPromises()
+    expect(wrapper.findAll('.book-story-card')).toHaveLength(0)
+    expect(wrapper.text()).toContain('Chưa có tác phẩm')
+    expect(mockRequest).toHaveBeenCalledTimes(1)
+  })
 
-    await vi.waitFor(() => {
-      expect(wrapper.findAll('.book-story-card').length).toBeGreaterThan(0)
-    })
+  it('shows a load error and retries without substituting sample stories', async () => {
+    mockRequest.mockRejectedValueOnce(new Error('offline'))
+    const wrapper = mount(BookshelfPage)
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('Không thể kết nối')
+    expect(wrapper.findAll('.book-story-card')).toHaveLength(0)
+    mockRequest.mockResolvedValueOnce([{ id: 'retry', title: 'Truyện từ server' }])
+    await wrapper.get('.btn-reset-filters').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.card-title').text()).toBe('Truyện từ server')
+  })
 
-    expect(wrapper.text()).toContain('Thánh Viên Vị Hoa')
-    expect(wrapper.text()).toContain('Tiếu Diện Giáo Thụ')
+  it('retains a story and its confirmation when the backend rejects deletion', async () => {
+    mockRequest.mockResolvedValueOnce([{ id: 'keep', title: 'Giữ truyện', chapterCount: 0 }])
+    const wrapper = mount(BookshelfPage)
+    await flushPromises()
+    await wrapper.get('.btn-card-delete').trigger('click')
+    mockRequest.mockRejectedValueOnce(new Error('offline'))
+    await wrapper.get('.btn-modal-delete').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.delete-modal-box').exists()).toBe(true)
+    expect(wrapper.get('.card-title').text()).toBe('Giữ truyện')
+    expect(wrapper.get('.toast-error').text()).toContain('Không thể kết nối')
+    expect(wrapper.get('.card-meta-line').text()).toContain('0 chương')
   })
 
   it('filters stories by status (All, Published, Draft)', async () => {

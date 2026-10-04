@@ -36,5 +36,37 @@ describe('per-entry scroll restoration', () => {
     expect(JSON.parse(sessionStorage.getItem('moc:scroll:v1')!).positions).toEqual([])
     manager.dispose()
   })
+
+  it('protects a departing page from scroll resets caused by unloading content', () => {
+    const manager = new ScrollRestorationManager()
+    const outgoing = document.createElement('div')
+    manager.register('page', 'main', outgoing)
+    outgoing.scrollTop = 550; manager.capture('page'); manager.freeze('page')
+    outgoing.scrollTop = 0; outgoing.dispatchEvent(new Event('scroll'))
+    manager.unregister('page', 'main', outgoing)
+    const incoming = document.createElement('div')
+    manager.thaw('page'); manager.register('page', 'main', incoming); manager.restore('page')
+    expect(incoming.scrollTop).toBe(550)
+    manager.dispose()
+  })
+
+  it('retains a clamped restoration until content grows, without fighting manual scrolling', () => {
+    const manager = new ScrollRestorationManager()
+    const original = document.createElement('div')
+    manager.register('page', 'main', original)
+    original.scrollTop = 600; manager.unregister('page', 'main', original)
+    const incoming = document.createElement('div')
+    let maximum = 0
+    let top = 0
+    Object.defineProperty(incoming, 'scrollTop', { get: () => top, set: value => { top = Math.min(value, maximum) } })
+    manager.register('page', 'main', incoming); manager.restore('page')
+    incoming.dispatchEvent(new Event('scroll'))
+    maximum = 1000; manager.restorePending('page')
+    expect(incoming.scrollTop).toBe(600)
+    incoming.dispatchEvent(new Event('wheel')); incoming.scrollTop = 120; incoming.dispatchEvent(new Event('scroll'))
+    manager.restorePending('page')
+    expect(incoming.scrollTop).toBe(120)
+    manager.dispose()
+  })
 })
 

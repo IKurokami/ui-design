@@ -1,18 +1,25 @@
-<script setup lang="ts">
+<script setup lang="ts" generic="Mode extends string = SortMode">
 import { computed, nextTick, ref, useId, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { ArrowDownUp, Check, ChevronDown } from '@lucide/vue'
 import { librarySortOptions } from '../sorting'
 import type { SortMode } from '../types'
 
-const props = withDefaults(defineProps<{ modelValue?: SortMode; compact?: boolean }>(), { modelValue: 'newest' })
-const emit = defineEmits<{ 'update:modelValue': [value: SortMode] }>()
+const props = defineProps<{
+  modelValue?: Mode
+  compact?: boolean
+  options?: readonly { value: Mode; label: string }[]
+}>()
+const emit = defineEmits<{ 'update:modelValue': [value: Mode] }>()
+const selectedMode = computed(() => props.modelValue ?? 'newest')
+// Library callers use the default modes; other pages provide their own typed options.
+const options = computed(() => props.options ?? (librarySortOptions as unknown as readonly { value: Mode; label: string }[]))
 const trigger = ref<HTMLButtonElement>()
 const menu = ref<HTMLElement>()
 const open = ref(false)
 const position = ref<Record<string, string>>({})
 const menuId = useId()
-const label = computed(() => librarySortOptions.find(option => option.value === props.modelValue)?.label)
+const label = computed(() => options.value.find(option => option.value === selectedMode.value)?.label)
 
 function close(restoreFocus = false) {
   open.value = false
@@ -35,9 +42,11 @@ async function show() {
   }
   open.value = true
   await nextTick()
-  menu.value?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus({ preventScroll: true })
+  const selected = menu.value?.querySelector<HTMLElement>('[aria-checked="true"]')
+    ?? menu.value?.querySelector<HTMLElement>('[role="menuitemradio"]')
+  selected?.focus({ preventScroll: true })
 }
-function choose(value: SortMode) {
+function choose(value: Mode) {
   emit('update:modelValue', value)
   close(true)
 }
@@ -76,9 +85,9 @@ watch(() => props.compact, () => close())
     </button>
     <Teleport to="body">
       <div v-if="open" :id="menuId" ref="menu" class="library-sort-menu" :style="position" role="menu" aria-label="Sắp xếp truyện" @keydown="onKeydown" @click.stop>
-        <button v-for="option in librarySortOptions" :key="option.value" type="button" role="menuitemradio"
-          :aria-checked="modelValue === option.value" @click="choose(option.value)">
-          <span>{{ option.label }}</span><Check v-if="modelValue === option.value" :size="15" aria-hidden="true" />
+        <button v-for="option in options" :key="option.value" type="button" role="menuitemradio"
+          :aria-checked="selectedMode === option.value" @click="choose(option.value)">
+          <span>{{ option.label }}</span><Check v-if="selectedMode === option.value" :size="15" aria-hidden="true" />
         </button>
       </div>
     </Teleport>

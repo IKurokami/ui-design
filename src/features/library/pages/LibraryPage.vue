@@ -1,23 +1,26 @@
 <script setup lang="ts">
-import { computed, ref, onBeforeUnmount, onMounted } from 'vue'
+import { computed, ref, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import LibrarySidebar from '../components/LibrarySidebar.vue'
 import LibraryStickyHeader from '../components/LibraryStickyHeader.vue'
 import CollectionDeckGrid from '../components/CollectionDeckGrid.vue'
+import ReadingHistory from '../components/ReadingHistory.vue'
 import AmbientBackdrop from '../components/AmbientBackdrop.vue'
-import { mockCategories, mockCollections } from '../data/mock-collections'
-import type { CollectionDeck, SortMode, Story, ViewMode } from '../types'
+import { Loader2 } from '@lucide/vue'
+import { storyToDeck, storyCategories, storyImageSources } from '../story-mapping'
+import { friendlyError } from '../../../services/error-handler'
+import type { CollectionDeck, ReadingProgress, SortMode, Story, ViewMode } from '../types'
 import { sortCollections } from '../sorting'
 import type { AmbientColors } from '../ambient-surface'
 import { extractAmbientPalette } from '../ambient-palette'
 import { createApiClient } from '../../../services/api-client'
+import { usePageScrollRestoration } from '../../../animations/composables/usePageScrollRestoration'
 import '../library-theme.css'
 
 const activeCategory = ref('all')
 const viewMode = ref<ViewMode>('deck')
 const searchQuery = ref('')
 const sortMode = ref<SortMode>('newest')
-const selectedDeck = ref<CollectionDeck | null>(null)
 const scrollArea = ref<HTMLElement>()
 
 const ambient = ref<InstanceType<typeof AmbientBackdrop>>()
@@ -44,135 +47,122 @@ async function onDeckHover(deck: CollectionDeck, element: HTMLElement) {
 const route = useRoute()
 const router = useRouter()
 const client = createApiClient()
-const userStories = ref<Story[]>([])
-
-async function loadStories() {
-  try {
-    const list = await client.request<Story[]>('/api/stories')
-    if (Array.isArray(list)) {
-      userStories.value = list
+const stories = ref<Story[]>([])
+const isLoading = ref(true)
+const loadError = ref('')
+usePageScrollRestoration('main', scrollArea, computed(() => !isLoading.value && !loadError.value))
+const isReading = computed(() => route.query.tab === 'reading')
+let requestVersion = 0
+async function loadMissingPreviews(data: Story[], version: number) {
+  // The current server may not include previewImages in summaries yet.
+  // Read real story details only when needed, with at most four requests in flight.
+  const missing = data.filter(story => !Array.isArray(story.previewImages) && !story.chapters)
+  let next = 0
+  async function worker() {
+    while (!disposed && version === requestVersion) {
+      const summary = missing[next++]
+      if (!summary) return
+      try {
+        const detail = await client.request<Story>('/api/stories/' + encodeURIComponent(summary.id))
+        if (disposed || version !== requestVersion) return
+        const previewImages = storyImageSources(detail)
+        stories.value = stories.value.map(story => story.id === summary.id ? { ...story, previewImages } : story)
+      } catch { /* Keep the real cover if a detail request fails. */ }
     }
-  } catch {
-    // Graceful fallback
+  }
+  await Promise.all(Array.from({ length: Math.min(4, missing.length) }, () => worker()))
+}
+async function loadStories() {
+  const version = ++requestVersion
+  isLoading.value = true
+  loadError.value = ''
+  try {
+    const reading = isReading.value
+    const data = await client.request<Story[]>(reading ? '/api/stories?reading=true' : '/api/stories')
+    // Older running servers omit progress in summaries; still use persisted API data.
+    if (reading) {
+      const missing = data.filter(story => !story.readingProgress)
+      let next = 0
+      async function worker() {
+        while (!disposed && version === requestVersion) {
+          const summary = missing[next++]
+          if (!summary) return
+          const path = '/api/stories/' + encodeURIComponent(summary.id)
+          const progress = await client.request<ReadingProgress>(path + '/reading-progress')
+          if (disposed || version !== requestVersion) return
+          if (progress.chapterId && !progress.chapterNumber) {
+            const detail = await client.request<Story>(path)
+            const chapter = detail.chapters?.find(chapter => chapter.id === progress.chapterId)
+            if (chapter) { progress.chapterNumber = chapter.chapterNumber; progress.chapterTitle = chapter.title }
+          }
+          summary.readingProgress = progress
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(4, missing.length) }, () => worker()))
+    }
+    if (!disposed && version === requestVersion) {
+      stories.value = data
+      if (!reading) void loadMissingPreviews(data, version)
+    }
+  } catch (error) {
+    if (!disposed && version === requestVersion) loadError.value = friendlyError(error)
+  } finally {
+    if (!disposed && version === requestVersion) isLoading.value = false
   }
 }
-
+watch(isReading, () => { activeCategory.value = 'all'; loadStories() })
 onMounted(() => {
   loadStories()
-  if (route.query.create === 'true' || route.query.create === '1') {
-    router.push('/library/editor')
-  }
+  if (route.query.create === 'true' || route.query.create === '1') router.push('/library/editor')
 })
-
-const userDecks = computed<CollectionDeck[]>(() => {
-  return userStories.value.map(s => {
-    const defaultCover = 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=80'
-    const cover = s.coverUrl || defaultCover
-    let covers: [string, string, string] = [cover, cover, cover]
-
-    if (s.chapters?.[0]?.illustrations) {
-      try {
-        const imgs = JSON.parse(s.chapters[0].illustrations)
-        if (Array.isArray(imgs) && imgs.length > 0) {
-          covers = [
-            imgs[0] || cover,
-            imgs[1] || imgs[0] || cover,
-            imgs[2] || imgs[0] || cover,
-          ]
-        }
-      } catch {}
-    }
-
-    return {
-      id: s.id,
-      title: s.title,
-      category: s.category || 'all',
-      itemCount: s.chapters?.length || 1,
-      totalFiles: s.chapters?.length || 1,
-      newCount: 1,
-      createdAt: s.createdAt,
-      covers,
-      tags: s.tags ? s.tags.split(',').map(t => t.trim()) : ['Tác phẩm mới'],
-      isUserCreated: true,
-    }
-  })
-})
-
-const allCollections = computed(() => [...userDecks.value, ...mockCollections])
-
-const filteredDecks = computed(() => {
-  return allCollections.value.filter(deck => {
-    // Filter by Category
-    if (activeCategory.value !== 'all') {
-      if (activeCategory.value === 'recent') {
-        if (!deck.newCount || deck.newCount === 0) return false
-      } else {
-        const matchesCategory = deck.category === activeCategory.value
-        const matchesTag = deck.tags.some(t => {
-          const lower = t.toLowerCase()
-          if (activeCategory.value === 'action') return lower.includes('hành động') || lower.includes('kiếm thuật') || lower.includes('chiến')
-          if (activeCategory.value === 'dark') return lower.includes('dark') || lower.includes('bá đạo') || lower.includes('phản diện')
-          if (activeCategory.value === 'psychological') return lower.includes('tâm lý') || lower.includes('vòng lặp') || lower.includes('bi kịch')
-          if (activeCategory.value === 'sliceoflife') return lower.includes('đời thường') || lower.includes('cảm xúc') || lower.includes('hài')
-          if (activeCategory.value === 'harem') return lower.includes('harem') || lower.includes('đấu trí')
-          if (activeCategory.value === 'game') return lower.includes('ảo') || lower.includes('kiếm thuật')
-          return false
-        })
-        if (!matchesCategory && !matchesTag) return false
-      }
-    }
-
-    // Filter by Search Query
-    if (searchQuery.value.trim() !== '') {
-      const q = searchQuery.value.toLowerCase().trim()
-      const matchTitle = deck.title.toLowerCase().includes(q)
-      const matchTags = deck.tags.some(t => t.toLowerCase().includes(q))
-      if (!matchTitle && !matchTags) return false
-    }
-
-    return true
-  })
-})
+const allCollections = computed(() => stories.value.map(storyToDeck))
+const categories = computed(() => storyCategories(stories.value))
+const filteredDecks = computed(() => allCollections.value.filter(deck => {
+  if (activeCategory.value !== 'all' && deck.category !== activeCategory.value) return false
+  const query = searchQuery.value.toLowerCase().trim()
+  return !query || deck.title.toLowerCase().includes(query) || deck.tags.some(tag => tag.toLowerCase().includes(query))
+}))
 const sortedDecks = computed(() => sortCollections(filteredDecks.value, sortMode.value))
 
 function onSelectDeck(deck: CollectionDeck) {
-  selectedDeck.value = deck
-  if (deck.isUserCreated) {
-    router.push(`/library/editor/${deck.id}`)
-  }
+  router.push('/library/stories/' + encodeURIComponent(deck.id))
 }
 </script>
 
 <template>
-  <div class="library-layout">
+  <div class="library-layout" :class="{ 'reading-library-layout': isReading }">
     <LibrarySidebar />
 
     <main class="library-main-wrapper">
       <!-- Keep ambient inside content, clipped away from the sidebar. -->
-      <AmbientBackdrop ref="ambient" />
+      <AmbientBackdrop v-if="!isReading" ref="ambient" />
 
       <!-- Scrollable Content Viewport -->
       <div ref="scrollArea" class="library-scroll-area">
         <div class="library-container">
-          <LibraryStickyHeader
-            :scroll-element="scrollArea"
-            title="Thư viện"
-            :total-collections="allCollections.length"
-            :result-count="filteredDecks.length"
-            :categories="mockCategories"
-            v-model:activeCategory="activeCategory"
-            v-model:viewMode="viewMode"
-            v-model:searchQuery="searchQuery"
-            v-model:sortMode="sortMode"
-          />
-
-          <!-- Deck Grid View Component -->
-          <CollectionDeckGrid
-            :decks="sortedDecks"
-            :view-mode="viewMode"
-            @select="onSelectDeck"
-            @hover="onDeckHover"
-          />
+          <ReadingHistory v-if="isReading" :stories="stories" :loading="isLoading" :error="loadError" @retry="loadStories" />
+          <template v-else>
+            <LibraryStickyHeader
+              :scroll-element="scrollArea"
+              title="Thư viện"
+              :total-collections="allCollections.length"
+              :result-count="filteredDecks.length"
+              :categories="categories"
+              v-model:activeCategory="activeCategory"
+              v-model:viewMode="viewMode"
+              v-model:searchQuery="searchQuery"
+              v-model:sortMode="sortMode"
+            />
+            <!-- Deck Grid View Component -->
+            <div v-if="isLoading" class="library-request-state" role="status" aria-label="Đang tải thư viện"><Loader2 :size="28" class="spin" /></div>
+            <div v-else-if="loadError" class="library-request-state" role="alert"><p>{{ loadError }}</p><button type="button" @click="loadStories">Thử lại</button></div>
+            <CollectionDeckGrid v-else
+              :decks="sortedDecks"
+              :view-mode="viewMode"
+              @select="onSelectDeck"
+              @hover="onDeckHover"
+            />
+          </template>
         </div>
       </div>
     </main>
@@ -180,6 +170,13 @@ function onSelectDeck(deck: CollectionDeck) {
 </template>
 
 <style scoped>
+.reading-library-layout :deep(.user-avatar-wrap), .reading-library-layout :deep(.avatar-btn) { box-shadow: none; }
+.library-request-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: 300px; color: var(--library-muted); font-size: 13px; text-align: center; }
+.library-request-state button { border: 0; border-radius: 10px; padding: 10px 16px; background: color-mix(in oklab, var(--library-accent) 10%, transparent); color: var(--library-accent); font: inherit; cursor: pointer; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
 .library-layout {
   position: relative;
   isolation: isolate;

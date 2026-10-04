@@ -3,8 +3,11 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import LibraryPage from '../src/features/library/pages/LibraryPage.vue'
+import { libraryStories } from './fixtures/library-stories'
 import AmbientBackdrop from '../src/features/library/components/AmbientBackdrop.vue'
 import { extractAmbientPalette } from '../src/features/library/ambient-palette'
+
+vi.mock('../src/services/api-client', () => ({ createApiClient: () => ({ request: vi.fn(async () => libraryStories) }) }))
 
 vi.mock('../src/features/library/ambient-palette', () => ({ extractAmbientPalette: vi.fn() }))
 const blue = ['#3b82f6', '#60a5fa', '#8b5cf6'] as [string, string, string]
@@ -13,7 +16,9 @@ const warm = ['#ef4444', '#f97316', '#84cc16'] as [string, string, string]
 async function mountLibrary() {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/library', component: LibraryPage }] })
   await router.push('/library')
-  return mount(LibraryPage, { global: { plugins: [createPinia(), router] } })
+  const wrapper = mount(LibraryPage, { global: { plugins: [createPinia(), router] } })
+  await flushPromises()
+  return wrapper
 }
 
 describe('Library hover creates persistent multi-color particles', () => {

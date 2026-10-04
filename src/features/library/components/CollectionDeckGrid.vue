@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CollectionDeck, ViewMode } from '../types'
 import CollectionDeckCard from './CollectionDeckCard.vue'
-import { FolderSearch } from '@lucide/vue'
+import { BookOpen, FolderSearch } from '@lucide/vue'
 
 defineProps<{
   decks: CollectionDeck[]
@@ -21,9 +21,10 @@ const emit = defineEmits<{
         @click="emit('select', deck)"
         @mouseenter="emit('hover', deck, $event.currentTarget as HTMLElement)"
         @focus="emit('hover', deck, $event.currentTarget as HTMLElement)">
-        <img :src="deck.covers[1]" alt="" crossorigin="anonymous" loading="lazy" />
+        <img v-if="deck.covers[0]" :src="deck.covers[0]" alt="" crossorigin="anonymous" loading="lazy" />
+        <span v-if="!deck.covers[0]" class="list-cover-placeholder"><BookOpen :size="20" /></span>
         <span class="list-copy"><strong>{{ deck.title }}</strong><span>{{ deck.tags.join(' · ') }}</span></span>
-        <span class="list-count">{{ deck.itemCount }} tập</span>
+        <span class="list-count">{{ deck.itemCount.toLocaleString('vi-VN') }} chương</span>
       </button>
     </div>
     <div v-else-if="decks.length > 0" class="deck-grid">
@@ -41,13 +42,14 @@ const emit = defineEmits<{
       <div class="empty-icon">
         <FolderSearch :size="36" :stroke-width="1.5" />
       </div>
-      <h3 class="empty-title">Không tìm thấy bộ sưu tập</h3>
+      <h3 class="empty-title">Không tìm thấy truyện</h3>
       <p class="empty-desc">Thử tìm kiếm với từ khóa khác hoặc chuyển sang danh mục tổng quan.</p>
     </div>
   </div>
 </template>
 
 <style scoped>
+.list-cover-placeholder { display: grid; place-items: center; color: var(--library-accent); background: color-mix(in oklab, var(--library-accent) 6%, transparent); }
 .deck-grid-container {
   width: 100%;
 }
@@ -55,7 +57,7 @@ const emit = defineEmits<{
 .deck-list-item { display: flex; align-items: center; gap: 18px; width: 100%; padding: 14px 12px; border: 0; border-radius: 12px; background: transparent; color: var(--library-ink); text-align: left; cursor: pointer; font: inherit; }
 .deck-list-item:hover { background: color-mix(in oklab, var(--library-accent) 5%, transparent); }
 .deck-list-item:focus-visible { outline: none; background: color-mix(in oklab, var(--library-accent) 14%, transparent); }
-.deck-list-item > img { width: 44px; height: 62px; border-radius: 5px; object-fit: cover; flex-shrink: 0; }
+.deck-list-item > img, .list-cover-placeholder { width: 44px; height: 62px; border-radius: 5px; object-fit: cover; flex-shrink: 0; }
 .list-copy { display: flex; flex: 1; flex-direction: column; gap: 7px; min-width: 0; }
 .list-copy strong { font-size: 14px; font-weight: 600; }
 .list-copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--library-muted); }

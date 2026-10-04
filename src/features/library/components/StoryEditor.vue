@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   ArrowLeft,
@@ -24,13 +24,21 @@ import {
   Trash2,
   PenTool,
   Layers,
-  FileText,
   Search,
   Minus,
   Pilcrow,
+  AlertTriangle,
+  Crop,
 } from '@lucide/vue'
 import LibrarySidebar from './LibrarySidebar.vue'
+import CollectionDeckCard from './CollectionDeckCard.vue'
+import ImageCropDialog from './ImageCropDialog.vue'
+import UnsavedChangesDialog from './UnsavedChangesDialog.vue'
+import { storyToDeck } from '../story-mapping'
 import { createApiClient } from '../../../services/api-client'
+import { friendlyError } from '../../../services/error-handler'
+import { usePageScrollRestoration } from '../../../animations/composables/usePageScrollRestoration'
+import { useAuthStore } from '../../../stores/auth.store'
 import type { Chapter, Story } from '../types'
 import '../library-theme.css'
 
@@ -46,6 +54,26 @@ const emit = defineEmits<{
 const router = useRouter()
 const route = useRoute()
 const client = createApiClient()
+const authStore = useAuthStore()
+const isLoading = ref(false)
+const loadError = ref('')
+const scrollArea = ref<HTMLElement>()
+usePageScrollRestoration('writing', scrollArea, computed(() => !isLoading.value && !loadError.value))
+const storyOwnerId = ref(props.initialStory?.userId || '')
+const canEdit = computed(() => !storyData.id || storyOwnerId.value === authStore.user?.id)
+const chapterToDelete = ref<Chapter | null>(null)
+const isDeletingChapter = ref(false)
+const deleteError = ref('')
+const deleteCancel = ref<HTMLButtonElement>()
+let deleteTrigger: HTMLElement | null = null
+let loadRevision = 0
+let hasLoadedStory = false
+const canMutate = computed(() => canEdit.value && !isLoading.value && !loadError.value && !isSaving.value && !isDeletingChapter.value && !isApplyingCrop.value)
+const statusOptions = [
+  { value: 'draft', label: 'Bản nháp' },
+  { value: 'published', label: 'Đang ra' },
+  { value: 'completed', label: 'Hoàn thành' },
+]
 
 // Active Workspace Tab: 'editor' (Soạn thảo) | 'chapters' (Quản lý chương) | 'images' (Kho ảnh truyện)
 const activeTab = ref<'editor' | 'chapters' | 'images'>('editor')
@@ -56,22 +84,16 @@ const storyData = reactive({
   title: props.initialStory?.title || '',
   description: props.initialStory?.description || '',
   coverUrl: props.initialStory?.coverUrl || '',
-  category: props.initialStory?.category || 'Tiên Hiệp',
+  category: props.initialStory?.category || '',
   tags: props.initialStory?.tags || '',
   status: props.initialStory?.status || 'published',
 })
 
 // Chapters list
-const chapters = ref<Chapter[]>(props.initialStory?.chapters && props.initialStory.chapters.length > 0 ? [...props.initialStory.chapters] : [
-  {
-    id: '',
-    storyId: props.initialStory?.id || '',
-    chapterNumber: 1,
-    title: 'Chương 1: Khởi đầu',
-    content: '<p>Bắt đầu viết nội dung chương truyện tại đây...</p>',
-    illustrations: '[]',
-  },
-])
+function newChapter(chapterNumber: number): Chapter {
+  return { id: '', storyId: storyData.id, chapterNumber, title: 'Chương ' + chapterNumber, content: '', illustrations: '[]' }
+}
+const chapters = ref<Chapter[]>(props.initialStory ? (props.initialStory.chapters || []).map(chapter => ({ ...chapter })) : [newChapter(1)])
 const activeChapterIndex = ref(0)
 
 const activeChapter = computed(() => {
@@ -95,6 +117,119 @@ const savedRange = ref<Range | null>(null)
 
 // Selected image in editor for floating action toolbar (xóa ảnh, đặt làm bìa)
 const selectedImage = ref<{ el: HTMLImageElement; src: string; top: number; left: number } | null>(null)
+const cropTarget = ref<{ src: string; scope: 'cover' | 'all' }>()
+const isApplyingCrop = ref(false)
+const savedSnapshot = ref('')
+const contentSnapshotCache = new WeakMap<Chapter, { source: string; html: string; images: string[] }>()
+function snapshot() {
+  return JSON.stringify({
+    metadata: { title: storyData.title, description: storyData.description, coverUrl: storyData.coverUrl, category: storyData.category, tags: storyData.tags, status: storyData.status },
+    chapters: chapters.value.map(chapter => {
+      // Browser HTML normalization alone is not an unsaved edit.
+      let content = contentSnapshotCache.get(chapter)
+      if (!content || content.source !== chapter.content) {
+        const template = document.createElement('template')
+        template.innerHTML = chapter.content
+        content = { source: chapter.content, html: template.innerHTML, images: [...template.content.querySelectorAll('img[src]')].map(image => image.getAttribute('src')!).filter(Boolean) }
+        contentSnapshotCache.set(chapter, content)
+      }
+      return { id: chapter.id, chapterNumber: chapter.chapterNumber, title: chapter.title, content: content.html, illustrations: [...new Set([...illustrationUrls(chapter), ...content.images])] }
+    }),
+  })
+}
+const hasUnsavedChanges = computed(() => !!savedSnapshot.value && snapshot() !== savedSnapshot.value)
+const hasPendingWrite = computed(() => isSaving.value || isDeletingChapter.value || isApplyingCrop.value || isUploadingImage.value || isUploadingCover.value || isUploadingGallery.value)
+const showUnsavedDialog = ref(false)
+const leaveError = ref('')
+let pendingLeave: Promise<boolean> | undefined
+let resolveLeave: ((leave: boolean) => void) | undefined
+let approvedLeaveSnapshot = ''
+function finishLeave(leave: boolean) {
+  if (leave) approvedLeaveSnapshot = snapshot()
+  showUnsavedDialog.value = false
+  leaveError.value = ''
+  resolveLeave?.(leave)
+  resolveLeave = undefined
+  pendingLeave = undefined
+}
+async function requestLeave(): Promise<boolean> {
+  if (pendingLeave) return pendingLeave
+  if (hasPendingWrite.value) { showToast('Đang lưu hoặc tải ảnh. Vui lòng đợi hoàn tất trước khi thoát.', 'error'); return false }
+  cropTarget.value = undefined
+  chapterToDelete.value = null
+  if (canEdit.value && !isLoading.value && !loadError.value && editorRef.value && activeChapter.value) {
+    const content = document.createElement('template')
+    content.innerHTML = activeChapter.value.content
+    if (content.innerHTML !== editorRef.value.innerHTML) syncCurrentChapterContent()
+  }
+  if (approvedLeaveSnapshot === snapshot()) return true
+  if (!hasUnsavedChanges.value) return true
+  leaveError.value = ''
+  showUnsavedDialog.value = true
+  pendingLeave = new Promise(resolve => { resolveLeave = resolve })
+  return pendingLeave
+}
+async function saveAndLeave() {
+  if (isSaving.value) return
+  if (await handleSaveStory(false)) finishLeave(true)
+  else leaveError.value = 'Chưa lưu được truyện. ' + toast.message + ' Các thay đổi vẫn còn trong editor.'
+}
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (!hasUnsavedChanges.value && !hasPendingWrite.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+watch([hasUnsavedChanges, hasPendingWrite], ([dirty, pending]) => {
+  if (dirty || pending) window.addEventListener('beforeunload', beforeUnload)
+  else window.removeEventListener('beforeunload', beforeUnload)
+}, { immediate: true, flush: 'sync' })
+const removeLeaveGuard = router.beforeEach?.((to, from) => {
+  if (!/^\/library\/editor(?:\/|$)/.test(from.path) || to.path === from.path) return true
+  return requestLeave()
+})
+const removeLeaveAfter = router.afterEach?.(() => { approvedLeaveSnapshot = '' })
+const libraryPreview = computed(() => storyToDeck({ ...storyData, userId: storyOwnerId.value, chapters: [...chapters.value].sort((a, b) => a.chapterNumber - b.chapterNumber) }))
+const cropDescription = computed(() => {
+  if (cropTarget.value?.scope === 'cover') return 'Chỉ thay ảnh bìa. Ảnh trong các chương được giữ nguyên. Lưu truyện để lưu thay đổi.'
+  const count = getImageChapters(cropTarget.value?.src ?? '').length
+  const places = [count ? `${count} chương` : '', storyData.coverUrl === cropTarget.value?.src ? 'ảnh bìa' : ''].filter(Boolean)
+  return places.length ? `Ảnh đã cắt sẽ thay ảnh này trong ${places.join(' và ')}. Lưu truyện để lưu thay đổi.` : 'Lưu truyện để lưu ảnh đã cắt.'
+})
+function openCrop(src: string, scope: 'cover' | 'all') {
+  if (!canMutate.value || !src) return
+  syncCurrentChapterContent()
+  cropTarget.value = { src, scope }
+  selectedImage.value = null
+}
+async function applyCroppedImage(file: File) {
+  const target = cropTarget.value
+  if (!target || !canMutate.value) throw new Error('Chưa thể chỉnh sửa ảnh lúc này.')
+  const revision = loadRevision
+  isApplyingCrop.value = true
+  try {
+    const url = await uploadFile(file)
+    if (revision !== loadRevision || cropTarget.value !== target) return
+    if (target.scope === 'cover') {
+      storyData.coverUrl = url
+      if (!storyGallery.value.includes(url)) storyGallery.value.unshift(url)
+    } else {
+      for (const chapter of chapters.value) {
+        const content = document.createElement('template')
+        content.innerHTML = chapter.content
+        content.content.querySelectorAll('img').forEach(image => {
+          if (image.getAttribute('src') === target.src) image.setAttribute('src', url)
+        })
+        chapter.content = content.innerHTML
+        chapter.illustrations = JSON.stringify(illustrationUrls(chapter).map(source => source === target.src ? url : source))
+      }
+      storyGallery.value = [...new Set(storyGallery.value.map(source => source === target.src ? url : source))]
+      if (storyData.coverUrl === target.src) storyData.coverUrl = url
+      if (editorRef.value) editorRef.value.innerHTML = activeChapter.value?.content ?? ''
+      savedRange.value = null
+    }
+    showToast('Đã cắt ảnh. Lưu truyện để lưu thay đổi.')
+  } finally { isApplyingCrop.value = false }
+}
 
 // Notion Slash Command Menu
 const slashMenu = reactive({
@@ -114,7 +249,7 @@ const toast = reactive({
   show: false,
   message: '',
   type: 'success' as 'success' | 'error',
-  timeoutId: 0 as any,
+  timeoutId: undefined as ReturnType<typeof setTimeout> | undefined,
 })
 
 function showToast(message: string, type: 'success' | 'error' = 'success') {
@@ -127,18 +262,30 @@ function showToast(message: string, type: 'success' | 'error' = 'success') {
   }, 2500)
 }
 
-const availableCategories = [
-  'Tiên Hiệp',
-  'Huyền Huyễn',
-  'Khoa Huyễn',
-  'Đô Thị',
-  'Võng Du',
-  'Đồng Nhân',
-  'Dã Sử',
-  'Đời Thường',
-  'Hài Hước',
-  'Trinh Thám',
-]
+onBeforeUnmount(() => {
+  loadRevision++
+  clearTimeout(toast.timeoutId)
+  window.removeEventListener('beforeunload', beforeUnload)
+  removeLeaveGuard?.()
+  removeLeaveAfter?.()
+  finishLeave(false)
+})
+function illustrationUrls(chapter: Chapter): string[] {
+  try {
+    const urls: unknown = JSON.parse(chapter.illustrations || '[]')
+    return Array.isArray(urls) ? urls.filter((url): url is string => typeof url === 'string' && !!url) : []
+  } catch { return [] }
+}
+function rebuildGallery() {
+  const urls = new Set<string>([storyData.coverUrl].filter(Boolean))
+  for (const chapter of chapters.value) {
+    illustrationUrls(chapter).forEach(url => urls.add(url))
+    const content = document.createElement('div')
+    content.innerHTML = chapter.content
+    content.querySelectorAll('img').forEach(image => { const url = image.getAttribute('src'); if (url) urls.add(url) })
+  }
+  storyGallery.value = [...urls]
+}
 
 // Lưu vùng chọn con trỏ trước khi mở popup tải ảnh
 function saveSelection() {
@@ -209,6 +356,7 @@ function updateActiveFormats() {
 
 // Format Commands
 function exec(command: string, value: string | undefined = undefined) {
+  if (!canMutate.value) return
   editorRef.value?.focus()
   document.execCommand(command, false, value)
   syncCurrentChapterContent()
@@ -216,6 +364,7 @@ function exec(command: string, value: string | undefined = undefined) {
 }
 
 function setBlock(tag: string) {
+  if (!canMutate.value) return
   editorRef.value?.focus()
   const cleanTag = tag.replace(/[<>]/g, '').toLowerCase()
   const currentBlock = getCurrentBlockElement()
@@ -264,7 +413,7 @@ function setBlock(tag: string) {
 }
 
 // Quét toàn bộ ảnh trong nội dung chương hiện tại và cập nhật kho ảnh
-function scanImages() {
+function scanImages(autoCover = true) {
   if (!editorRef.value) return
   const imgs = editorRef.value.querySelectorAll('img')
   const chapterImages: string[] = []
@@ -283,45 +432,39 @@ function scanImages() {
   })
 
   // Tự động: Nếu truyện chưa có ảnh bìa và có ảnh trong bài viết, tự động gán ảnh đầu tiên làm ảnh bìa truyện!
-  if (!storyData.coverUrl && chapterImages.length > 0) {
+  if (autoCover && !storyData.coverUrl && chapterImages.length > 0) {
     storyData.coverUrl = chapterImages[0]
   }
 
   if (activeChapter.value) {
-    activeChapter.value.illustrations = JSON.stringify(chapterImages)
+    activeChapter.value.illustrations = JSON.stringify([...new Set([...illustrationUrls(activeChapter.value), ...chapterImages])])
   }
 }
 
-function syncCurrentChapterContent() {
+function syncCurrentChapterContent(autoCover = true) {
   if (activeChapter.value && editorRef.value) {
     activeChapter.value.content = editorRef.value.innerHTML
   }
-  scanImages()
+  scanImages(autoCover)
 }
 
 // Chuyển đổi chương đang soạn thảo
 function switchChapter(index: number) {
-  syncCurrentChapterContent()
+  syncCurrentChapterContent(false)
   activeChapterIndex.value = index
   if (editorRef.value && activeChapter.value) {
-    editorRef.value.innerHTML = activeChapter.value.content || '<p>Bắt đầu viết nội dung chương tại đây...</p>'
-    scanImages()
+    editorRef.value.innerHTML = activeChapter.value.content || ''
+    scanImages(false)
   }
   activeTab.value = 'editor'
 }
 
 // Thêm chương mới
 function addNewChapter() {
+  if (!canMutate.value) return
   syncCurrentChapterContent()
-  const newNum = chapters.value.length + 1
-  const newCh: Chapter = {
-    id: '',
-    storyId: storyData.id,
-    chapterNumber: newNum,
-    title: `Chương ${newNum}: Tiêu đề mới`,
-    content: '<p>Bắt đầu viết nội dung chương mới tại đây...</p>',
-    illustrations: '[]',
-  }
+  const newNum = Math.max(0, ...chapters.value.map(chapter => chapter.chapterNumber)) + 1
+  const newCh = newChapter(newNum)
   chapters.value.push(newCh)
   activeChapterIndex.value = chapters.value.length - 1
   if (editorRef.value) {
@@ -331,38 +474,79 @@ function addNewChapter() {
   activeTab.value = 'editor'
 }
 
-// Xóa chương
-function deleteChapter(index: number) {
-  if (chapters.value.length <= 1) {
-    showToast('Bộ truyện cần tối thiểu 1 chương', 'error')
-    return
+async function deleteChapter(index: number) {
+  if (!canMutate.value) return
+  syncCurrentChapterContent()
+  deleteTrigger = document.activeElement as HTMLElement | null
+  chapterToDelete.value = chapters.value[index] ?? null
+  deleteError.value = ''
+  await nextTick()
+  deleteCancel.value?.focus()
+}
+function closeDeleteChapter() {
+  if (isDeletingChapter.value) return
+  chapterToDelete.value = null
+  deleteError.value = ''
+  deleteTrigger?.focus()
+}
+function onDeleteKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') { event.preventDefault(); closeDeleteChapter() }
+  if (event.key === 'Tab') {
+    const buttons = [...(event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('button:not(:disabled)')]
+    const first = buttons[0], last = buttons.at(-1)
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
   }
-  const removed = chapters.value.splice(index, 1)[0]
-  // Đánh lại số thứ tự
-  chapters.value.forEach((ch, i) => {
-    ch.chapterNumber = i + 1
-  })
-  if (activeChapterIndex.value >= chapters.value.length) {
-    activeChapterIndex.value = chapters.value.length - 1
+}
+async function confirmDeleteChapter() {
+  const chapter = chapterToDelete.value
+  if (!chapter || isDeletingChapter.value || isSaving.value) return
+  isDeletingChapter.value = true
+  deleteError.value = ''
+  try {
+    if (chapter.id) await client.request('/api/chapters/' + encodeURIComponent(chapter.id), { method: 'DELETE' })
+    if (chapter.id && savedSnapshot.value) {
+      const baseline = JSON.parse(savedSnapshot.value)
+      baseline.chapters = baseline.chapters.filter((saved: { id: string }) => saved.id !== chapter.id)
+      savedSnapshot.value = JSON.stringify(baseline)
+    }
+    const index = chapters.value.indexOf(chapter)
+    if (index !== -1) {
+      const selected = activeChapter.value
+      chapters.value.splice(index, 1)
+      const selectedIndex = selected ? chapters.value.indexOf(selected) : -1
+      activeChapterIndex.value = selectedIndex >= 0 ? selectedIndex : Math.max(0, Math.min(index, chapters.value.length - 1))
+    }
+    rebuildGallery()
+    chapterToDelete.value = null
+    await nextTick()
+    if (editorRef.value) { editorRef.value.innerHTML = activeChapter.value?.content || '' }
+    showToast('Đã xóa ' + chapter.title)
+    if (deleteTrigger?.isConnected) deleteTrigger.focus()
+    else document.querySelector<HTMLButtonElement>('.chapter-add-chip')?.focus()
+  } catch (error) {
+    deleteError.value = friendlyError(error)
+  } finally {
+    isDeletingChapter.value = false
   }
-  if (editorRef.value && activeChapter.value) {
-    editorRef.value.innerHTML = activeChapter.value.content
-  }
-  showToast(`Đã xóa ${removed.title}`)
 }
 
 // Đặt ảnh bất kỳ làm ảnh bìa truyện
 function setAsCover(url: string) {
+  if (!canMutate.value) return
   storyData.coverUrl = url
   showToast('Đã chọn làm ảnh bìa truyện!')
 }
 
 function removeCover() {
+  if (!canMutate.value) return
   storyData.coverUrl = ''
 }
 
 // Chèn ảnh từ Kho ảnh vào vị trí con trỏ trong văn bản
 function insertImageFromGallery(url: string) {
+  if (!canMutate.value) return
+  if (!activeChapter.value) addNewChapter()
   activeTab.value = 'editor'
   setTimeout(() => {
     insertImageAtCursor(url)
@@ -372,6 +556,8 @@ function insertImageFromGallery(url: string) {
 
 // Kích hoạt upload ảnh chèn vào văn bản
 function triggerInsertImage() {
+  if (!canMutate.value) return
+  if (!activeChapter.value) addNewChapter()
   saveSelection()
   imageInputRef.value?.click()
 }
@@ -389,6 +575,7 @@ async function uploadFile(file: File): Promise<string> {
 
 // Xử lý khi chọn ảnh để chèn vào văn bản
 async function handleImageSelected(e: Event) {
+  if (!canMutate.value) return
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
   if (!file) return
@@ -421,6 +608,7 @@ function insertImageAtCursor(url: string) {
 
 // Upload ảnh bìa trực tiếp
 async function handleCoverSelected(e: Event) {
+  if (!canMutate.value) return
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
   if (!file) return
@@ -443,6 +631,8 @@ async function handleCoverSelected(e: Event) {
 
 // Upload ảnh vào kho ảnh (Gallery)
 async function handleGallerySelected(e: Event) {
+  if (!canMutate.value) return
+  if (!activeChapter.value) addNewChapter()
   const target = e.target as HTMLInputElement
   const files = target.files
   if (!files || files.length === 0) return
@@ -454,6 +644,7 @@ async function handleGallerySelected(e: Event) {
       if (!storyGallery.value.includes(url)) {
         storyGallery.value.push(url)
       }
+      if (activeChapter.value) activeChapter.value.illustrations = JSON.stringify([...new Set([...illustrationUrls(activeChapter.value), url])])
       if (!storyData.coverUrl) {
         storyData.coverUrl = url
       }
@@ -469,6 +660,7 @@ async function handleGallerySelected(e: Event) {
 
 // Paste ảnh trực tiếp từ clipboard
 async function handlePaste(e: ClipboardEvent) {
+  if (!canMutate.value) return
   const items = e.clipboardData?.items
   if (!items) return
 
@@ -523,6 +715,7 @@ function handleEditorDragLeave(e: DragEvent) {
 }
 
 async function handleEditorDrop(e: DragEvent) {
+  if (!canMutate.value) return
   e.preventDefault()
   isDraggingOver.value = false
 
@@ -580,6 +773,7 @@ async function handleEditorDrop(e: DragEvent) {
 }
 
 async function handleCoverDrop(e: DragEvent) {
+  if (!canMutate.value) return
   e.preventDefault()
   const files = e.dataTransfer?.files
   if (!files || files.length === 0) return
@@ -620,6 +814,7 @@ function getImageChapters(url: string) {
 
 // Xóa ảnh khỏi kho ảnh và gỡ bỏ khỏi toàn bộ các chương
 function deleteImageFromGallery(url: string) {
+  if (!canMutate.value) return
   storyGallery.value = storyGallery.value.filter(u => u !== url)
 
   chapters.value.forEach(ch => {
@@ -667,9 +862,9 @@ function handleEditorClick(e: MouseEvent) {
     const rect = img.getBoundingClientRect()
     selectedImage.value = {
       el: img,
-      src: img.src,
+      src: img.getAttribute('src') || img.src,
       top: Math.max(10, rect.top - 46),
-      left: Math.max(10, rect.left),
+      left: Math.max(10, Math.min(rect.left, window.innerWidth - 360)),
     }
     closeSlashMenu()
     return
@@ -680,7 +875,10 @@ function handleEditorClick(e: MouseEvent) {
 
 // Xóa ảnh đang chọn khỏi chương hiện tại
 function deleteSelectedImage() {
+  if (!canMutate.value) return
   if (!selectedImage.value) return
+  const url = selectedImage.value.src
+  if (activeChapter.value) activeChapter.value.illustrations = JSON.stringify(illustrationUrls(activeChapter.value).filter(image => image !== url))
   const imgEl = selectedImage.value.el
   const parent = imgEl.parentElement
   if (parent && parent.tagName === 'P' && parent.children.length === 1 && !parent.textContent?.trim()) {
@@ -695,6 +893,7 @@ function deleteSelectedImage() {
 
 // Đặt ảnh đang chọn trong bài làm ảnh bìa truyện
 function setAsCoverFromEditor() {
+  if (!canMutate.value) return
   if (!selectedImage.value) return
   storyData.coverUrl = selectedImage.value.src
   showToast('Đã chọn làm ảnh bìa truyện!')
@@ -1024,6 +1223,7 @@ function applySlashCommand(cmd: SlashCommand) {
   cmd.action()
 }
 
+
 const filteredGalleryImages = computed(() => {
   const q = imagePickerSearch.value.toLowerCase().trim()
   return storyGallery.value.map(url => {
@@ -1052,187 +1252,134 @@ function triggerUploadFromPicker() {
   triggerInsertImage()
 }
 
-// Lưu truyện lên server
-async function handleSaveStory() {
+function chapterPayload(chapter: Chapter) {
+  return {
+    chapterNumber: chapter.chapterNumber,
+    title: chapter.title.trim() || 'Chương ' + chapter.chapterNumber,
+    content: chapter.content,
+    illustrations: chapter.illustrations || '[]',
+  }
+}
+async function handleSaveStory(navigate = true): Promise<boolean> {
+  if (!canMutate.value || chapterToDelete.value || cropTarget.value || isUploadingImage.value || isUploadingCover.value || isUploadingGallery.value) return false
   if (!storyData.title.trim()) {
     showToast('Vui lòng nhập tên bộ truyện', 'error')
-    return
+    return false
   }
-
+  syncCurrentChapterContent()
   isSaving.value = true
   try {
-    syncCurrentChapterContent()
-
-    let saved: Story
-    if (storyData.id) {
-      // 1. Cập nhật thông tin truyện
-      saved = await client.request<Story>(`/api/stories/${storyData.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          title: storyData.title.trim(),
-          description: storyData.description.trim(),
-          coverUrl: storyData.coverUrl,
-          category: storyData.category,
-          tags: storyData.tags,
-          status: storyData.status,
-        }),
-      })
-
-      // 2. Cập nhật hoặc tạo các chương
-      for (const ch of chapters.value) {
-        if (ch.id) {
-          await client.request(`/api/chapters/${ch.id}`, {
-            method: 'PUT',
-            body: JSON.stringify({
-              title: ch.title.trim() || `Chương ${ch.chapterNumber}`,
-              content: ch.content,
-              illustrations: ch.illustrations || '[]',
-            }),
-          })
-        } else {
-          const createdCh = await client.request<Chapter>(`/api/stories/${storyData.id}/chapters`, {
-            method: 'POST',
-            body: JSON.stringify({
-              chapterNumber: ch.chapterNumber,
-              title: ch.title.trim() || `Chương ${ch.chapterNumber}`,
-              content: ch.content,
-              illustrations: ch.illustrations || '[]',
-            }),
-          })
-          ch.id = createdCh.id
-        }
-      }
-    } else {
-      // Tạo truyện mới kèm chương đầu tiên
-      const firstChapter = chapters.value[0] || {
-        chapterNumber: 1,
-        title: 'Chương 1: Khởi đầu',
-        content: editorRef.value?.innerHTML || '',
-        illustrations: '[]',
-      }
-
-      saved = await client.request<Story>('/api/stories', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: storyData.title.trim(),
-          description: storyData.description.trim(),
-          coverUrl: storyData.coverUrl,
-          category: storyData.category,
-          tags: storyData.tags,
-          status: storyData.status,
-          initialChapter: {
-            chapterNumber: 1,
-            title: firstChapter.title.trim() || 'Chương 1',
-            content: firstChapter.content,
-            illustrations: firstChapter.illustrations || '[]',
-          },
-        }),
-      })
-      storyData.id = saved.id
-      if (saved.chapters && saved.chapters.length > 0) {
-        chapters.value[0] = saved.chapters[0]
-      }
+    const metadata = {
+      title: storyData.title.trim(), description: storyData.description.trim(),
+      coverUrl: storyData.coverUrl, category: storyData.category.trim(), tags: storyData.tags.trim(), status: storyData.status,
     }
-
-    showToast('Đã lưu & xuất bản truyện thành công!')
-    emit('saved', saved)
-  } catch (err: any) {
-    showToast(err.message || 'Lỗi khi lưu truyện', 'error')
+    const creating = !storyData.id
+    const first = chapters.value[0]
+    const saved = await client.request<Story>(creating ? '/api/stories' : '/api/stories/' + encodeURIComponent(storyData.id), {
+      method: creating ? 'POST' : 'PUT',
+      body: JSON.stringify({ ...metadata, ...(creating && first ? { initialChapter: chapterPayload(first) } : {}) }),
+    })
+    storyData.id = saved.id
+    storyOwnerId.value = saved.userId
+    if (creating && first) {
+      const created = saved.chapters?.[0]
+      if (!created?.id) throw new Error('Máy chủ chưa trả về chương vừa tạo.')
+      Object.assign(first, created)
+    }
+    for (const [index, chapter] of chapters.value.entries()) {
+      if (creating && index === 0) continue
+      const { chapterNumber, ...update } = chapterPayload(chapter)
+      const persisted = await client.request<Chapter>(chapter.id
+        ? '/api/chapters/' + encodeURIComponent(chapter.id)
+        : '/api/stories/' + encodeURIComponent(storyData.id) + '/chapters', {
+        method: chapter.id ? 'PUT' : 'POST',
+        body: JSON.stringify(chapter.id ? update : { chapterNumber, ...update }),
+      })
+      Object.assign(chapter, persisted)
+    }
+    hasLoadedStory = true
+    savedSnapshot.value = snapshot()
+    isSaving.value = false
+    showToast('Đã lưu truyện thành công')
+    emit('saved', { ...saved, chapters: chapters.value.map(chapter => ({ ...chapter })), chapterCount: chapters.value.length })
+    if (navigate && route.path.includes('/library/editor') && route.params.id !== storyData.id) {
+      await router.replace('/library/editor/' + encodeURIComponent(storyData.id))
+    }
+    return true
+  } catch (error) {
+    showToast(friendlyError(error), 'error')
+    return false
   } finally {
     isSaving.value = false
   }
 }
-
 async function loadStoryDetails(storyId: string) {
+  const revision = ++loadRevision
+  isLoading.value = true
+  savedSnapshot.value = ''
+  loadError.value = ''
   try {
-    const story = await client.request<Story>(`/api/stories/${storyId}`)
-    if (story) {
-      storyData.id = story.id
-      storyData.title = story.title
-      storyData.description = story.description || ''
-      storyData.coverUrl = story.coverUrl || ''
-      storyData.category = story.category || 'Tiên Hiệp'
-      storyData.tags = story.tags || ''
-      storyData.status = story.status || 'published'
-
-      if (story.coverUrl && !storyGallery.value.includes(story.coverUrl)) {
-        storyGallery.value.push(story.coverUrl)
-      }
-
-      if (story.chapters && story.chapters.length > 0) {
-        chapters.value = story.chapters
-        story.chapters.forEach(ch => {
-          if (ch.illustrations) {
-            try {
-              const imgs = JSON.parse(ch.illustrations)
-              if (Array.isArray(imgs)) {
-                imgs.forEach(url => {
-                  if (!storyGallery.value.includes(url)) {
-                    storyGallery.value.push(url)
-                  }
-                })
-              }
-            } catch {}
-          }
-        })
-        activeChapterIndex.value = 0
-        if (editorRef.value) {
-          editorRef.value.innerHTML = story.chapters[0].content || ''
-          scanImages()
-        }
-      }
-    }
-  } catch {
-    // Keep initial values
+    const story = await client.request<Story>('/api/stories/' + encodeURIComponent(storyId))
+    if (revision !== loadRevision) return
+    Object.assign(storyData, {
+      id: story.id, title: story.title, description: story.description || '', coverUrl: story.coverUrl || '',
+      category: story.category || '', tags: story.tags || '', status: story.status || 'published',
+    })
+    storyOwnerId.value = story.userId
+    chapters.value = (story.chapters || []).map(chapter => ({ ...chapter }))
+    activeChapterIndex.value = 0
+    rebuildGallery()
+    hasLoadedStory = true
+    await nextTick()
+    if (editorRef.value) editorRef.value.innerHTML = activeChapter.value?.content || ''
+    savedSnapshot.value = snapshot()
+  } catch (error) {
+    if (revision === loadRevision) loadError.value = friendlyError(error)
+  } finally {
+    if (revision === loadRevision) isLoading.value = false
   }
 }
+watch(() => String(route.params.id || props.initialStory?.id || ''), async id => {
+  if (id && id === storyData.id && hasLoadedStory) return
+  chapterToDelete.value = null
+  cropTarget.value = undefined
+  activeTab.value = 'editor'
+  if (id) await loadStoryDetails(id)
+  else {
+    loadRevision++
+    isLoading.value = false
+    loadError.value = ''
+    hasLoadedStory = false
+    Object.assign(storyData, { id: '', title: '', description: '', coverUrl: '', category: '', tags: '', status: 'published' })
+    storyOwnerId.value = ''
+    chapters.value = [newChapter(1)]
+    activeChapterIndex.value = 0
+    storyGallery.value = []
+    if (editorRef.value) editorRef.value.innerHTML = ''
+    savedSnapshot.value = snapshot()
+  }
+}, { immediate: true })
 
-function handleClose() {
+async function handleClose() {
   if (route.path.includes('/library/editor')) {
-    router.push('/library')
+    router.push('/library/bookshelf')
   } else {
-    emit('close')
+    if (await requestLeave()) emit('close')
   }
 }
 
-onMounted(() => {
-  const storyIdFromRoute = route.params.id as string | undefined
-  if (storyIdFromRoute) {
-    loadStoryDetails(storyIdFromRoute)
-  } else if (props.initialStory?.id) {
-    loadStoryDetails(props.initialStory.id)
-  } else {
-    // Khởi tạo chương 1 mặc định
-    chapters.value = [
-      {
-        id: '',
-        storyId: '',
-        chapterNumber: 1,
-        title: 'Chương 1: Khởi đầu',
-        content: '<p>Bắt đầu viết nội dung chương truyện tại đây...</p>',
-        illustrations: '[]',
-      },
-    ]
-  }
-
-  // Khởi tạo editor
-  if (editorRef.value && chapters.value.length > 0) {
-    editorRef.value.innerHTML = chapters.value[0].content
-    scanImages()
-  }
-})
 </script>
 
 <template>
   <div class="studio-layout">
     <!-- 1. Persistent Sidebar containing Brand Logo 'mộc.' at the top -->
-    <LibrarySidebar />
+    <LibrarySidebar :before-logout="requestLeave" />
 
     <!-- 2. Main Studio Workspace -->
     <div class="studio-main">
       <!-- Toast notification -->
       <Transition name="toast">
-        <div v-if="toast.show" class="editor-toast" :class="toast.type">
+        <div v-if="toast.show" class="editor-toast" :class="toast.type" :role="toast.type === 'error' ? 'alert' : 'status'" aria-atomic="true">
           <Check v-if="toast.type === 'success'" :size="15" />
           <X v-else :size="15" />
           <span>{{ toast.message }}</span>
@@ -1317,84 +1464,43 @@ onMounted(() => {
           <button
             type="button"
             class="btn-save-draft btn-publish"
-            :disabled="isSaving"
-            @click="handleSaveStory"
+            :disabled="!canMutate || !!chapterToDelete || !!cropTarget || isUploadingImage || isUploadingCover || isUploadingGallery"
+            @click="handleSaveStory()"
           >
             <Loader2 v-if="isSaving" :size="14" class="spin" />
             <Check v-else :size="14" />
-            <span>{{ isSaving ? 'Đang lưu...' : 'Xuất bản' }}</span>
+            <span>{{ isSaving ? 'Đang lưu...' : 'Lưu truyện' }}</span>
           </button>
         </div>
       </header>
 
+      <div v-if="isLoading" class="editor-request-state" role="status"><Loader2 :size="24" class="spin" /> Đang tải truyện…</div>
+      <div v-else-if="loadError" class="editor-request-state" role="alert"><p>{{ loadError }}</p><button type="button" class="btn-primary-action" @click="loadStoryDetails(String(route.params.id || props.initialStory?.id || ''))">Thử lại</button></div>
+      <p v-else-if="!canEdit" class="editor-readonly-notice">Bạn đang xem truyện của tác giả khác. Chỉ tác giả có thể chỉnh sửa.</p>
       <!-- TAB 1: SOẠN THẢO TRUYỆN CHỮ (Word-like Canvas, Floating Ribbon, Auto-cover) -->
-      <div v-show="activeTab === 'editor'" class="studio-tab-content">
-        <main class="editor-scroll-area">
+      <div v-show="activeTab === 'editor'" class="studio-tab-content" :inert="isLoading || !!loadError || isSaving || !!chapterToDelete">
+        <main ref="scrollArea" class="editor-scroll-area">
           <div class="word-page-container writing-sheet">
-            <!-- Ảnh bìa truyện phẳng (Banner) -->
-            <div class="story-cover-section">
-              <div
-                v-if="storyData.coverUrl"
-                class="cover-preview-box has-cover"
-                role="button"
-                tabindex="0"
-                title="Nhấp để đổi ảnh bìa hoặc kéo thả ảnh vào đây"
-                @click="coverInputRef?.click()"
-                @dragover.prevent
-                @drop.prevent="handleCoverDrop"
-              >
-                <img :src="storyData.coverUrl" alt="Ảnh bìa truyện" class="cover-image" />
-                <div class="cover-hover-actions">
-                  <span class="pill-action"><Upload :size="13" /> Đổi ảnh bìa</span>
-                  <button
-                    type="button"
-                    class="pill-action btn-remove-cover"
-                    title="Gỡ ảnh bìa"
-                    @click.stop="removeCover"
-                  >
-                    <X :size="13" />
-                  </button>
+            <section class="story-cover-section" aria-label="Xem trước trong thư viện" @dragover.prevent @drop.prevent="handleCoverDrop">
+              <div class="cover-preview-box">
+                <CollectionDeckCard :deck="libraryPreview" preview />
+              </div>
+              <div class="cover-controls">
+                <h2>Hiển thị trong thư viện</h2>
+                <div v-if="canEdit" class="cover-edit-actions">
+                  <button v-if="storyData.coverUrl" type="button" :disabled="!canMutate" class="btn-crop-cover" @click="openCrop(storyData.coverUrl, 'cover')"><Crop :size="15" />Cắt ảnh bìa</button>
+                  <button type="button" :disabled="!canMutate || isUploadingCover" @click="coverInputRef?.click()"><Upload :size="15" />{{ isUploadingCover ? 'Đang tải…' : storyData.coverUrl ? 'Đổi ảnh bìa' : 'Thêm ảnh bìa' }}</button>
+                  <button v-if="storyData.coverUrl" type="button" :disabled="!canMutate" class="btn-remove-cover" @click="removeCover"><X :size="15" />Gỡ bìa</button>
                 </div>
               </div>
-
-              <!-- Nút thêm ảnh bìa tinh tế khi chưa có ảnh -->
-              <div
-                v-else
-                class="cover-preview-box is-empty"
-                role="button"
-                tabindex="0"
-                title="Tải ảnh bìa truyện hoặc kéo thả ảnh vào đây"
-                @click="coverInputRef?.click()"
-                @dragover.prevent
-                @drop.prevent="handleCoverDrop"
-              >
-                <Upload :size="17" />
-                <span>Thêm ảnh bìa truyện (hoặc kéo thả ảnh vào đây)</span>
-              </div>
-
-              <!-- Dải thumbnail ảnh tinh tế có trong truyện để nhấp nhanh đổi ảnh bìa -->
-              <div v-if="storyGallery.length > 0" class="gallery-quick-strip">
-                <div class="strip-thumbnails">
-                  <div
-                    v-for="(imgUrl, idx) in storyGallery"
-                    :key="idx"
-                    class="content-img-thumb"
-                    :class="{ 'is-active-cover': storyData.coverUrl === imgUrl }"
-                    :title="storyData.coverUrl === imgUrl ? 'Ảnh bìa hiện tại' : 'Nhấp để đặt làm ảnh bìa truyện'"
-                    @click="setAsCover(imgUrl)"
-                  >
-                    <img :src="imgUrl" alt="Thumbnail" />
-                    <span v-if="storyData.coverUrl === imgUrl" class="cover-active-badge">✓</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            </section>
 
             <!-- Tiêu đề truyện lớn, không viền, không card -->
             <div class="story-title-wrap">
               <input
                 v-model="storyData.title"
                 class="doc-title-input title-hero-input"
+                :readonly="!canEdit"
                 placeholder="Tiêu đề truyện..."
                 maxlength="200"
               />
@@ -1403,15 +1509,12 @@ onMounted(() => {
             <!-- Thể loại, tags, tóm tắt tinh gọn -->
             <div class="story-meta-panel meta-inline-box">
               <div class="meta-row">
-                <select v-model="storyData.category" class="chip-select">
-                  <option v-for="cat in availableCategories" :key="cat" :value="cat">
-                    {{ cat }}
-                  </option>
-                </select>
+                <input v-model="storyData.category" class="chip-input category-input" placeholder="Thể loại" aria-label="Thể loại truyện" :readonly="!canEdit" />
 
                 <input
                   v-model="storyData.tags"
                   class="chip-input"
+                  :readonly="!canEdit"
                   placeholder="Thêm từ khóa / tags (cách nhau bởi dấu phẩy)..."
                 />
               </div>
@@ -1420,10 +1523,14 @@ onMounted(() => {
                 v-model="storyData.description"
                 rows="2"
                 class="input-textarea synopsis-textarea"
+                :readonly="!canEdit"
                 placeholder="Tóm tắt giới thiệu ngắn về tác phẩm..."
               />
             </div>
 
+            <div class="story-status-options" role="group" aria-label="Trạng thái truyện">
+              <button v-for="option in statusOptions" :key="option.value" type="button" :aria-pressed="storyData.status === option.value" :disabled="!canEdit" @click="storyData.status = option.value">{{ option.label }}</button>
+            </div>
             <div class="section-divider" />
 
             <!-- Bộ chuyển chương nhanh & Thêm chương -->
@@ -1442,6 +1549,7 @@ onMounted(() => {
                 <button
                   type="button"
                   class="chapter-add-chip"
+                  :disabled="!canMutate"
                   title="Thêm chương mới"
                   @click="addNewChapter"
                 >
@@ -1456,14 +1564,15 @@ onMounted(() => {
               <input
                 v-model="activeChapter.title"
                 class="chapter-title-input"
+                :readonly="!canEdit"
                 placeholder="Tiêu đề chương (Ví dụ: Chương 1: Khởi đầu)..."
                 maxlength="200"
-                @input="syncCurrentChapterContent"
+                @input="syncCurrentChapterContent()"
               />
             </div>
 
             <!-- Floating Minimal Ribbon Toolbar -->
-            <div class="word-ribbon floating-toolbar">
+            <div v-if="canEdit && activeChapter" class="word-ribbon floating-toolbar">
               <button type="button" class="ribbon-btn" title="Hoàn tác (Ctrl+Z)" @click="exec('undo')">
                 <Undo :size="15" />
               </button>
@@ -1590,7 +1699,7 @@ onMounted(() => {
               ref="editorRef"
               class="word-document-content fluid-content-editor"
               :class="{ 'is-drop-target': isDraggingOver }"
-              contenteditable="true"
+              :contenteditable="canEdit && !!activeChapter && !isLoading && !loadError"
               spellcheck="false"
               @input="handleEditorInput"
               @keydown="handleEditorKeyDown"
@@ -1610,10 +1719,10 @@ onMounted(() => {
 
             <!-- Floating Image Action Toolbar in Editor (Xóa ảnh, Đặt làm bìa) -->
             <div
-              v-if="selectedImage"
-              class="editor-img-toolbar"
+              v-if="selectedImage && canEdit" class="editor-img-toolbar"
               :style="{ top: `${selectedImage.top}px`, left: `${selectedImage.left}px` }"
             >
+              <button type="button" class="img-tool-btn btn-crop-editor-image" @click="selectedImage && openCrop(selectedImage.src, 'all')"><Crop :size="13" />Cắt ảnh</button>
               <button
                 type="button"
                 class="img-tool-btn"
@@ -1623,7 +1732,6 @@ onMounted(() => {
                 <Star :size="13" />
                 <span>Đặt làm bìa</span>
               </button>
-              <span class="img-tool-sep" />
               <button
                 type="button"
                 class="img-tool-btn btn-danger"
@@ -1674,14 +1782,14 @@ onMounted(() => {
       </div>
 
       <!-- TAB 2: QUẢN LÝ CHƯƠNG (Chapters Manager) -->
-      <div v-show="activeTab === 'chapters'" class="studio-tab-content">
+      <div v-show="activeTab === 'chapters'" class="studio-tab-content" :inert="isLoading || !!loadError || isSaving || !!chapterToDelete">
         <div class="manager-container">
           <div class="manager-top-action">
             <div class="manager-stats">
               <span class="stats-strong">{{ chapters.length }} chương</span>
               <span class="stats-sub">Tổng số chương của bộ truyện</span>
             </div>
-            <button type="button" class="btn-primary-action" @click="addNewChapter">
+            <button type="button" class="btn-primary-action" :disabled="!canMutate" @click="addNewChapter">
               <Plus :size="16" />
               <span>Thêm chương mới</span>
             </button>
@@ -1702,8 +1810,9 @@ onMounted(() => {
                 <input
                   v-model="ch.title"
                   class="chapter-inline-title-input"
+                :readonly="!canEdit"
                   placeholder="Nhập tiêu đề chương..."
-                  @input="syncCurrentChapterContent"
+                    @input="syncCurrentChapterContent()"
                 />
                 <div class="chapter-meta-line">
                   <span>{{ (ch.content || '').replace(/<[^>]*>/g, '').length }} ký tự</span>
@@ -1723,6 +1832,7 @@ onMounted(() => {
                 <button
                   type="button"
                   class="btn-row-delete"
+                  :disabled="!canMutate"
                   title="Xóa chương này"
                   @click="deleteChapter(idx)"
                 >
@@ -1734,105 +1844,116 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- TAB 3: KHO ẢNH TRUYỆN (Story Media Gallery) -->
-      <div v-show="activeTab === 'images'" class="studio-tab-content">
-        <div class="manager-container">
-          <div class="manager-top-action">
-            <div class="manager-stats">
-              <span class="stats-strong">{{ storyGallery.length }} hình ảnh</span>
-              <span class="stats-sub">Tất cả ảnh minh họa & ảnh bìa của bộ truyện</span>
+      <!-- TAB 3: KHO ẢNH TRUYỆN -->
+      <div v-show="activeTab === 'images'" class="studio-tab-content gallery-tab-view" :inert="isLoading || !!loadError || isSaving || !!chapterToDelete">
+        <div class="gallery-container">
+          <header class="gallery-header">
+            <div class="gallery-title-row">
+              <h2 class="gallery-title">Kho ảnh</h2>
+              <span class="gallery-badge">{{ storyGallery.length }}</span>
             </div>
             <button
               type="button"
               class="btn-primary-action"
-              :disabled="isUploadingGallery"
+              :disabled="isUploadingGallery || !canMutate"
               @click="galleryInputRef?.click()"
             >
-              <Loader2 v-if="isUploadingGallery" :size="16" class="spin" />
-              <Upload v-else :size="16" />
-              <span>{{ isUploadingGallery ? 'Đang tải lên...' : 'Tải thêm ảnh vào kho' }}</span>
+              <Loader2 v-if="isUploadingGallery" :size="15" class="spin" />
+              <Upload v-else :size="15" />
+              <span>{{ isUploadingGallery ? 'Đang tải…' : 'Tải ảnh' }}</span>
             </button>
-          </div>
+          </header>
 
+          <section class="gallery-library-preview" aria-label="Xem trước trong thư viện"><h3>Hiển thị trong thư viện</h3><CollectionDeckCard :deck="libraryPreview" preview /></section>
           <div v-if="storyGallery.length > 0" class="gallery-grid">
-            <div
+            <article
               v-for="imgUrl in storyGallery"
               :key="imgUrl"
               class="gallery-card"
               :class="{ 'is-cover': storyData.coverUrl === imgUrl }"
             >
-              <div class="gallery-card-img">
-                <img :src="imgUrl" alt="Ảnh minh họa" />
-                <div v-if="storyData.coverUrl === imgUrl" class="cover-tag">
-                  <Star :size="12" fill="currentColor" />
-                  <span>Ảnh bìa truyện</span>
-                </div>
+              <div class="gallery-thumb">
+                <img :src="imgUrl" alt="" loading="lazy" />
+                <span v-if="storyData.coverUrl === imgUrl" class="cover-badge">
+                  <Star :size="11" fill="currentColor" /> Bìa
+                </span>
               </div>
 
-              <!-- Thông tin các chương đang dùng ảnh này -->
-              <div class="gallery-usage-row">
-                <span class="usage-label">Đang dùng ở:</span>
+              <div class="gallery-meta">
                 <div v-if="getImageChapters(imgUrl).length > 0" class="usage-chips-wrap">
                   <button
                     v-for="ch in getImageChapters(imgUrl)"
                     :key="ch.index"
                     type="button"
                     class="usage-ch-btn"
-                    title="Chuyển sang soạn thảo chương này"
+                    title="Chuyển đến chương"
                     @click="switchChapter(ch.index)"
                   >
                     Chương {{ ch.chapterNumber }}
                   </button>
                 </div>
-                <span v-else class="usage-ch-none">Chưa dùng trong chương nào</span>
-              </div>
 
-              <div class="gallery-card-actions">
-                <button
-                  type="button"
-                  class="gallery-btn"
-                  :class="{ active: storyData.coverUrl === imgUrl }"
-                  title="Đặt ảnh này làm ảnh bìa truyện"
-                  @click="setAsCover(imgUrl)"
-                >
-                  <Star :size="13" />
-                  <span>{{ storyData.coverUrl === imgUrl ? 'Đang làm bìa' : 'Đặt làm bìa' }}</span>
-                </button>
-                <button
-                  type="button"
-                  class="gallery-btn btn-insert-to-doc"
-                  title="Chèn ảnh này vào chương đang soạn"
-                  @click="insertImageFromGallery(imgUrl)"
-                >
-                  <FileText :size="13" />
-                  <span>Chèn vào bài</span>
-                </button>
-                <button
-                  type="button"
-                  class="gallery-btn btn-delete-gallery-img"
-                  title="Xóa ảnh này khỏi kho và các chương"
-                  @click="deleteImageFromGallery(imgUrl)"
-                >
-                  <Trash2 :size="13" />
-                  <span>Xóa ảnh</span>
-                </button>
+                <div v-if="canEdit" class="gallery-card-actions">
+                  <button type="button" class="gallery-btn btn-crop-gallery-image" :disabled="!canMutate" @click="openCrop(imgUrl, 'all')"><Crop :size="13" /><span>Cắt ảnh</span></button>
+                  <button
+                    type="button"
+                    class="gallery-btn"
+                    :class="{ active: storyData.coverUrl === imgUrl }"
+                    title="Đặt làm bìa"
+                    @click="setAsCover(imgUrl)"
+                  >
+                    <Star :size="13" :fill="storyData.coverUrl === imgUrl ? 'currentColor' : 'none'" />
+                    <span>{{ storyData.coverUrl === imgUrl ? 'Đang là bìa' : 'Làm bìa' }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="gallery-btn btn-insert-to-doc"
+                    title="Chèn vào chương"
+                    @click="insertImageFromGallery(imgUrl)"
+                  >
+                    <Plus :size="13" />
+                    <span>Chèn</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="gallery-btn btn-delete-gallery-img"
+                    title="Xóa ảnh"
+                    @click="deleteImageFromGallery(imgUrl)"
+                  >
+                    <Trash2 :size="13" />
+                  </button>
+                </div>
               </div>
-            </div>
+            </article>
           </div>
 
           <div v-else class="gallery-empty-state">
-            <ImageIcon :size="40" :stroke-width="1.3" />
-            <h4>Kho ảnh truyện còn trống</h4>
-            <p>Tải ảnh lên hoặc dán ảnh vào chương soạn thảo, toàn bộ hình ảnh sẽ tự động được gom vào đây để bạn quản lý.</p>
+            <ImageIcon :size="36" :stroke-width="1.3" />
+            <p>Chưa có ảnh</p>
             <button
               type="button"
               class="btn-primary-action"
               @click="galleryInputRef?.click()"
             >
               <Upload :size="15" />
-              <span>Tải ảnh đầu tiên</span>
+              <span>Tải ảnh</span>
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <ImageCropDialog v-if="cropTarget" :src="cropTarget.src" :description="cropDescription" :apply="applyCroppedImage" @close="cropTarget = undefined" />
+    <UnsavedChangesDialog v-if="showUnsavedDialog" :saving="isSaving" :error="leaveError" @stay="finishLeave(false)" @discard="finishLeave(true)" @save="saveAndLeave" />
+    <div v-if="chapterToDelete" class="chapter-delete-overlay" @click.self="closeDeleteChapter" @keydown="onDeleteKeydown">
+      <div class="chapter-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="chapter-delete-title" aria-describedby="chapter-delete-description">
+        <AlertTriangle :size="26" aria-hidden="true" />
+        <h2 id="chapter-delete-title">Xóa chương {{ chapterToDelete.chapterNumber }}?</h2>
+        <p id="chapter-delete-description"><strong>{{ chapterToDelete.title }}</strong><br />{{ chapterToDelete.id ? 'Chương này đã được lưu. Toàn bộ nội dung và danh sách minh họa của chương sẽ bị xóa vĩnh viễn khỏi truyện ngay khi bạn xác nhận. Không thể hoàn tác.' : 'Chương này chưa được lưu. Xác nhận sẽ bỏ toàn bộ nội dung và minh họa trong bản nháp của chương. Không thể hoàn tác.' }}</p>
+        <p v-if="deleteError" class="chapter-delete-error" role="alert">{{ deleteError }}</p>
+        <div class="chapter-delete-actions">
+          <button ref="deleteCancel" type="button" :disabled="isDeletingChapter" @click="closeDeleteChapter">Giữ chương</button>
+          <button type="button" class="btn-confirm-delete-chapter" :disabled="isDeletingChapter" @click="confirmDeleteChapter"><Loader2 v-if="isDeletingChapter" :size="15" class="spin" />{{ isDeletingChapter ? 'Đang xóa…' : 'Xóa vĩnh viễn' }}</button>
         </div>
       </div>
     </div>
@@ -1907,6 +2028,24 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.editor-request-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px; color: var(--library-muted); font-size: 13px; }
+.editor-readonly-notice { margin: 0; padding: 12px 24px; color: var(--library-muted); font-size: 12px; }
+.studio-tab-content[inert] { opacity: .5; }
+.story-status-options { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px; }
+.story-status-options button { border: 0; border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 11px; background: color-mix(in oklab, var(--library-accent) 6%, transparent); color: var(--library-muted); cursor: pointer; }
+.story-status-options button[aria-pressed="true"] { background: color-mix(in oklab, var(--library-accent) 16%, transparent); color: var(--library-accent); }
+.category-input { max-width: 180px; }
+.chapter-delete-overlay { position: fixed; inset: 0; z-index: 3500; display: grid; place-items: center; padding: 24px; background: #18241c40; backdrop-filter: blur(8px); }
+.chapter-delete-dialog { width: min(420px, 100%); padding: 28px; border-radius: 24px; background: var(--library-surface); color: var(--library-ink); }
+.chapter-delete-dialog > svg, .chapter-delete-error { color: #aa4b3f; }
+.chapter-delete-dialog h2 { font-size: 22px; font-weight: 600; margin: 18px 0 12px; }
+.chapter-delete-dialog p { font-size: 13px; line-height: 1.7; color: var(--library-muted); overflow-wrap: anywhere; }
+.chapter-delete-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.chapter-delete-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 10px; padding: 11px 14px; font: inherit; font-size: 12px; background: color-mix(in oklab, var(--library-accent) 8%, transparent); color: var(--library-ink); cursor: pointer; }
+.chapter-delete-actions .btn-confirm-delete-chapter { background: #aa4b3f; color: #fff; }
+.chapter-delete-actions button:focus-visible { outline: none; text-decoration: underline; text-underline-offset: 4px; }
+button:disabled { cursor: not-allowed; opacity: .5; }
+
 /* Toàn bộ bố cục Studio: Sidebar Mộc ở bên trái (chứa Logo), nội dung ở bên phải */
 .studio-layout {
   --library-surface: #ffffff;
@@ -1939,9 +2078,11 @@ onMounted(() => {
 
 /* Toast */
 .editor-toast {
-  position: fixed;
-  top: 18px;
-  right: 28px;
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
   z-index: 3000;
   display: inline-flex;
   align-items: center;
@@ -1967,7 +2108,7 @@ onMounted(() => {
 .toast-enter-from,
 .toast-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translate(-50%, 8px);
 }
 
 /* Studio Header */
@@ -2114,130 +2255,14 @@ onMounted(() => {
   flex-direction: column;
 }
 
-/* Cover Banner */
-.story-cover-section {
-  margin-bottom: 22px;
-}
-
-.cover-preview-box.has-cover {
-  position: relative;
-  width: 100%;
-  height: 220px;
-  border-radius: 14px;
-  overflow: hidden;
-  cursor: pointer;
-}
-.cover-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.cover-hover-actions {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.cover-preview-box.has-cover:hover .cover-hover-actions {
-  opacity: 1;
-}
-
-.pill-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border-radius: 9999px;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(10px);
-  color: #ffffff;
-  border: 0;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.cover-preview-box.is-empty {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--library-muted, #7a8278);
-  font-size: 13.5px;
-  font-weight: 500;
-  cursor: pointer;
-  width: fit-content;
-  transition: color 0.15s;
-}
-.cover-preview-box.is-empty:hover {
-  color: var(--library-ink);
-}
-
-/* Quick Strip */
-.gallery-quick-strip {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-}
-.strip-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: #3b7c38;
-  font-weight: 500;
-  white-space: nowrap;
-}
-.strip-thumbnails {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow-x: auto;
-}
-.content-img-thumb {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  overflow: hidden;
-  cursor: pointer;
-  flex-shrink: 0;
-  border: 2px solid transparent;
-  transition: transform 0.15s, border-color 0.15s;
-}
-.content-img-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.content-img-thumb:hover {
-  transform: scale(1.08);
-}
-.content-img-thumb.is-active-cover {
-  border-color: #2e7d32;
-}
-.cover-active-badge {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  background: #2e7d32;
-  color: #fff;
-  border-radius: 50%;
-  width: 14px;
-  height: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+.story-cover-section { display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: center; gap: 24px; margin-bottom: 28px; padding: 18px 0; }
+.cover-controls h2 { margin: 0 0 16px; font-size: 13px; font-weight: 550; }
+.cover-edit-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cover-edit-actions button { display: inline-flex; align-items: center; gap: 7px; border: 0; box-shadow: none; border-radius: 10px; padding: 10px 12px; background: #eef2e8; color: var(--library-accent); font: inherit; font-size: 12px; cursor: pointer; }
+.gallery-library-preview { display: flex; align-items: center; gap: 32px; margin-bottom: 28px; }
+.gallery-library-preview h3 { margin: 0; font-size: 13px; font-weight: 550; }
+.studio-layout :deep(.user-avatar-wrap), .studio-layout :deep(.avatar-btn) { box-shadow: none; }
+@media (max-width: 600px) { .story-cover-section { grid-template-columns: minmax(0, 1fr); gap: 12px; }.cover-controls { text-align: center; }.cover-edit-actions { justify-content: center; }.gallery-library-preview { flex-direction: column; gap: 12px; } }
 
 /* Tiêu đề truyện */
 .story-title-wrap {
@@ -2271,7 +2296,6 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
 }
-.chip-select,
 .chip-input {
   border: 0;
   outline: none;
@@ -2470,7 +2494,7 @@ onMounted(() => {
   inset: 0;
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(6px);
-  border: 2px dashed #2e7d32;
+  border: 0;
   border-radius: 14px;
   display: flex;
   flex-direction: column;
@@ -2507,7 +2531,7 @@ onMounted(() => {
 .fluid-content-editor :deep(blockquote) {
   margin: 20px 0;
   padding: 10px 20px;
-  border-left: 3px solid #3b7c38;
+  border: 0;
   font-style: italic;
   color: var(--library-muted);
 }
@@ -2528,7 +2552,7 @@ onMounted(() => {
 .editor-bottom-hint {
   margin-top: 36px;
   padding-top: 14px;
-  border-top: 1px solid color-mix(in oklab, var(--library-ink) 6%, transparent);
+  border: 0;
   font-size: 12px;
   color: var(--library-muted);
   text-align: center;
@@ -2686,109 +2710,229 @@ onMounted(() => {
   background: color-mix(in oklab, #992822 10%, transparent);
 }
 
-/* Gallery Grid */
-.gallery-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-}
-.gallery-card {
-  border-radius: 12px;
-  overflow: hidden;
-  background: color-mix(in oklab, var(--library-ink) 3%, transparent);
+/* ============================================================
+   KHO ẢNH TRUYỆN (STORY MEDIA GALLERY)
+   ============================================================ */
+.gallery-tab-view {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  transition: transform 0.15s;
-}
-.gallery-card:hover {
-  transform: translateY(-2px);
-}
-.gallery-card.is-cover {
-  background: color-mix(in oklab, var(--library-accent) 9%, var(--library-surface));
-}
-
-.gallery-card-img {
-  position: relative;
-  aspect-ratio: 4/3;
+  min-height: 0;
   overflow: hidden;
 }
-.gallery-card-img img {
+
+.gallery-container {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 28px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.gallery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.gallery-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gallery-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--library-ink);
+  letter-spacing: -0.02em;
+}
+
+.gallery-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--library-ink) 7%, transparent);
+  color: var(--library-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+.gallery-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--library-ink) 3.5%, transparent);
+  border: 0;
+  box-shadow: none;
+  overflow: hidden;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.gallery-card:hover {
+  background: color-mix(in oklab, var(--library-ink) 6.5%, transparent);
+}
+
+.gallery-card.is-cover {
+  background: color-mix(in oklab, var(--library-accent) 8%, transparent);
+}
+
+.gallery-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 17 / 22;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--library-ink) 6%, transparent);
+}
+
+.gallery-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.cover-tag {
+
+.cover-badge {
   position: absolute;
   top: 8px;
   left: 8px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: 9999px;
-  background: rgba(46, 125, 50, 0.9);
+  background: rgba(24, 36, 28, 0.72);
+  backdrop-filter: blur(8px);
   color: #ffffff;
   font-size: 11px;
   font-weight: 600;
+  border: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.gallery-meta {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.usage-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 22px;
+}
+
+.usage-ch-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--library-ink) 6%, transparent);
+  color: var(--library-muted);
+  font-size: 11px;
+  font-weight: 500;
+  border: 0;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.usage-ch-btn:hover {
+  background: color-mix(in oklab, var(--library-accent) 15%, transparent);
+  color: var(--library-accent);
 }
 
 .gallery-card-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 10px;
-  gap: 6px;
+  gap: 4px;
 }
+
 .gallery-btn {
-  flex: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
   padding: 5px 8px;
-  border-radius: 6px;
-  border: 0;
-  background: color-mix(in oklab, var(--library-ink) 6%, transparent);
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--library-ink) 5%, transparent);
   color: var(--library-ink);
   font-size: 11.5px;
   font-weight: 500;
+  border: 0;
+  box-shadow: none;
   cursor: pointer;
-  transition: background 0.15s;
-}
-.gallery-btn:hover {
-  background: color-mix(in oklab, var(--library-ink) 12%, transparent);
-}
-.gallery-btn.active {
-  background: color-mix(in oklab, #2e7d32 15%, transparent);
-  color: #2e7d32;
-  font-weight: 600;
-}
-.btn-insert-to-doc {
-  background: color-mix(in oklab, #274726 8%, transparent);
-  color: #274726;
+  transition: background 0.15s, color 0.15s;
 }
 
-/* Empty Gallery */
+.gallery-btn:hover {
+  background: color-mix(in oklab, var(--library-ink) 10%, transparent);
+}
+
+.gallery-btn.active {
+  background: color-mix(in oklab, var(--library-accent) 15%, transparent);
+  color: var(--library-accent);
+  font-weight: 600;
+}
+
+.gallery-btn.btn-delete-gallery-img {
+  margin-left: auto;
+  padding: 5px 7px;
+  color: var(--library-muted);
+}
+
+.gallery-btn.btn-delete-gallery-img:hover {
+  background: color-mix(in oklab, #992822 12%, transparent);
+  color: #992822;
+}
+
 .gallery-empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  padding: 64px 20px;
+  min-height: 340px;
   text-align: center;
-  padding: 60px 20px;
-  gap: 12px;
+  gap: 14px;
   color: var(--library-muted);
 }
-.gallery-empty-state h4 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--library-ink);
-  margin: 0;
-}
+
 .gallery-empty-state p {
-  max-width: 420px;
-  font-size: 13.5px;
-  line-height: 1.6;
-  margin: 0 0 12px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--library-muted);
+}
+
+@media (max-width: 640px) {
+  .gallery-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
 }
 
 .spin {
@@ -2820,13 +2964,15 @@ onMounted(() => {
   position: fixed;
   z-index: 1000;
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 20px);
   align-items: center;
   gap: 4px;
   padding: 4px 6px;
   background: #ffffff;
   color: #18241c;
   border-radius: 9999px;
-  box-shadow: 0 4px 16px rgba(24, 36, 28, 0.08);
+  box-shadow: none;
   animation: fadeIn 0.15s ease-out;
 }
 
@@ -2877,7 +3023,7 @@ onMounted(() => {
   max-height: 340px;
   background: #ffffff;
   border-radius: 14px;
-  box-shadow: 0 6px 24px rgba(24, 36, 28, 0.08);
+  box-shadow: none;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -2891,7 +3037,7 @@ onMounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: #727a70;
-  border-bottom: 1px solid rgba(24, 36, 28, 0.06);
+  border: 0;
 }
 
 .slash-menu-list {
@@ -3047,7 +3193,7 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 18px 22px 14px;
-  border-bottom: 1px solid rgba(24, 36, 28, 0.08);
+  border: 0;
 }
 
 .picker-title-area {
@@ -3161,7 +3307,7 @@ onMounted(() => {
 .picker-thumb {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 17 / 22;
   overflow: hidden;
   background: #eef2ed;
 }

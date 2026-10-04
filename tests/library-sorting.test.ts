@@ -5,7 +5,9 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import LibrarySortMenu from '../src/features/library/components/LibrarySortMenu.vue'
 import LibraryPage from '../src/features/library/pages/LibraryPage.vue'
 import { sortCollections } from '../src/features/library/sorting'
-import { mockCollections } from '../src/features/library/data/mock-collections'
+import { libraryStories } from './fixtures/library-stories'
+import { storyToDeck } from '../src/features/library/story-mapping'
+vi.mock('../src/services/api-client', () => ({ createApiClient: () => ({ request: vi.fn(async () => libraryStories) }) }))
 import type { CollectionDeck } from '../src/features/library/types'
 
 const cleanups: (() => void)[] = []
@@ -15,32 +17,30 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const deck = (id: string, title: string, createdAt?: string, favoriteCount?: number): CollectionDeck => ({
-  id, title, createdAt, favoriteCount, category: 'fantasy', itemCount: 1, totalFiles: 1,
+const deck = (id: string, title: string, createdAt?: string): CollectionDeck => ({
+  id, title, createdAt, category: 'fantasy', itemCount: 1,
   covers: ['', '', ''], tags: [],
 })
 const books = [
-  deck('b', 'Bộ 10', '2026-09-01', 10),
-  deck('a', 'Bộ 2', '2026-09-03', 40),
-  deck('c', 'An', '2026-09-02', 20),
+  deck('b', 'Bộ 10', '2026-09-01'),
+  deck('a', 'Bộ 2', '2026-09-03'),
+  deck('c', 'An', '2026-09-02'),
 ]
 const ids = (items: CollectionDeck[]) => items.map(item => item.id)
 
 describe('Library sorting', () => {
-  it('sorts titles naturally, dates chronologically and favorites numerically without mutating source data', () => {
+  it('sorts titles naturally and dates chronologically without mutating source data', () => {
     expect(ids(sortCollections(books, 'title-asc'))).toEqual(['c', 'a', 'b'])
     expect(ids(sortCollections(books, 'title-desc'))).toEqual(['b', 'a', 'c'])
     expect(ids(sortCollections(books, 'newest'))).toEqual(['a', 'c', 'b'])
     expect(ids(sortCollections(books, 'oldest'))).toEqual(['b', 'c', 'a'])
-    expect(ids(sortCollections(books, 'favorites'))).toEqual(['a', 'c', 'b'])
     expect(ids(books)).toEqual(['b', 'a', 'c'])
   })
 
-  it('keeps unknown dates last and uses titles to resolve equal favorite counts', () => {
-    const items = [...books, deck('unknown', 'A', 'invalid'), deck('tied', 'Z', undefined, 40)]
+  it('keeps unknown dates last and uses titles to resolve ties', () => {
+    const items = [...books, deck('unknown', 'A', 'invalid'), deck('tied', 'Z', undefined)]
     expect(ids(sortCollections(items, 'oldest'))).toEqual(['b', 'c', 'a', 'unknown', 'tied'])
     expect(ids(sortCollections(items, 'newest'))).toEqual(['a', 'c', 'b', 'unknown', 'tied'])
-    expect(ids(sortCollections(items, 'favorites')).slice(0, 2)).toEqual(['a', 'tied'])
   })
 
   it('portals the menu outside clipping parents and supports keyboard selection with focus restoration', async () => {
@@ -56,10 +56,10 @@ describe('Library sorting', () => {
     expect(menu.parentElement).toBe(document.body)
     expect(document.activeElement?.textContent).toContain('Ngày tạo mới nhất')
     menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
-    expect(document.activeElement?.textContent).toContain('Yêu thích nhiều nhất')
+    expect(document.activeElement?.textContent).toContain('Ngày tạo cũ nhất')
     ;(document.activeElement as HTMLButtonElement).click()
     await flushPromises()
-    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['favorites'])
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['oldest'])
     expect(document.querySelector('[role="menu"]')).toBeNull()
     expect(document.activeElement).toBe(trigger.element)
   })
@@ -97,12 +97,13 @@ describe('Library sorting', () => {
     await router.push('/library')
     const wrapper = mount(LibraryPage, { attachTo: document.body, global: { plugins: [createPinia(), router] } })
     cleanups.push(() => wrapper.unmount())
-    await wrapper.get('[data-category="isekai"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-category="category:Kỳ Ảo"]').trigger('click')
     await wrapper.get('.sort-trigger').trigger('click')
-    const favorites = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(button => button.textContent?.includes('Yêu thích'))!
+    const favorites = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(button => button.textContent?.includes('Tên Z'))!
     favorites.click()
     await flushPromises()
-    const expected = sortCollections(mockCollections.filter(item => item.category === 'isekai'), 'favorites').map(item => item.title)
+    const expected = sortCollections(libraryStories.filter(item => item.category === 'Kỳ Ảo').map(storyToDeck), 'title-desc').map(item => item.title)
     expect(wrapper.findAll('.deck-title').map(item => item.text())).toEqual(expected)
     expect(wrapper.get('.header-stats').text()).toBe(`${expected.length} bộ truyện`)
     await wrapper.get('[aria-label="Dạng danh sách"]').trigger('click')

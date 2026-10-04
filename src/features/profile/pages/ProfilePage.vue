@@ -11,6 +11,7 @@ import LibrarySidebar from '../../library/components/LibrarySidebar.vue'
 import UserAvatar from '../../../components/ui/UserAvatar.vue'
 import { useAuthStore } from '../../../stores/auth.store'
 import { createApiClient } from '../../../services/api-client'
+import { usePageScrollRestoration } from '../../../animations/composables/usePageScrollRestoration'
 
 interface ProfileData {
   id: string
@@ -24,6 +25,8 @@ interface ProfileData {
 
 const authStore = useAuthStore()
 const client = createApiClient()
+const scrollArea = ref<HTMLElement>()
+usePageScrollRestoration('main', scrollArea)
 
 const saving = ref(false)
 const uploadingAvatar = ref(false)
@@ -205,7 +208,7 @@ async function handleBannerChange(e: Event) {
   <div class="profile-layout">
     <LibrarySidebar />
 
-    <main class="profile-main">
+    <main ref="scrollArea" class="profile-main">
       <Transition name="toast">
         <div v-if="toast.show" class="profile-toast" :class="toast.type">
           <Check v-if="toast.type === 'success'" :size="14" />
