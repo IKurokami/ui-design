@@ -138,7 +138,8 @@ Các attribute bổ sung:
 | `data-motion-ignore` | Bỏ qua cả subtree |
 | `data-motion-text="label"` | Opt in morph chữ/placeholder khi phần tử cha được ghép |
 | `data-motion-nested` | Cho phần con có identity chạy riêng dù cha đã có marker; dùng cùng `nested: true` |
-| `data-motion-clip` | Giữ giới hạn scroll/clip của vùng này cả khi `unclip: true` |
+| `data-motion-allow-inert` | Cho phép chính marker được đo cho shared motion khi nó nằm trong vùng `inert` đang khóa tương tác |
+| `data-motion-clip` | Giữ giới hạn scroll/clip của vùng này cả khi `unclip: true`; ghost biến mất của list cũng bị cắt theo vùng này, kể cả khi vùng nằm ngoài capture root (vd. vùng cuộn của page chứa component list) |
 | `data-motion-overlay-target` | Trong list, chuyển phần tử bằng ghost độc lập với vùng scroll |
 
 Marker trên card sở hữu toàn bộ subtree: không animate lại title/ảnh bên trong card. Muốn animate các phần con riêng, đặt marker lên từng phần con và để card không được chọn. Engine bỏ qua subtree `hidden`, `display:none`, `visibility:hidden`, `aria-hidden="true"`, `inert` và overlay của chính nó. Capture root có thể `inert` khi controller đang khóa tương tác; các item bên trong vẫn đo được.

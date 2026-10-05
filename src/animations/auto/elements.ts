@@ -9,7 +9,7 @@ function eligible(element: HTMLElement, root: HTMLElement) {
   for (let current: HTMLElement | null = element; current; current = current.parentElement) {
     if (current.hasAttribute('data-motion-ignore') || current.hasAttribute('data-motion-overlay') || current.hidden || current.matches('script, iframe, object, embed')) return false
     // The root itself may be inert while a navigation controller locks interaction.
-    if (current !== root && (current.hasAttribute('inert') || current.getAttribute('aria-hidden') === 'true')) return false
+    if (current !== root && (current.hasAttribute('inert') || current.getAttribute('aria-hidden') === 'true') && !element.hasAttribute('data-motion-allow-inert')) return false
     const style = getComputedStyle(current)
     if (style.display === 'none' || style.visibility === 'hidden') return false
     if (current === root) break

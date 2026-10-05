@@ -11,6 +11,7 @@ import {
 import { useAuthStore } from '../../../stores/auth.store'
 import { createApiClient } from '../../../services/api-client'
 import UserAvatar from '../../../components/ui/UserAvatar.vue'
+import { useAutoMotion } from '../../../animations/composables/useAutoMotion'
 
 const props = defineProps<{ beforeLogout?: () => Promise<boolean> }>()
 
@@ -25,6 +26,25 @@ const isEditorActive = computed(() => route?.path?.startsWith('/library/editor')
 const isBookshelfActive = computed(() => route?.path === '/library/bookshelf' || route?.path === '/bookshelf')
 const isLibraryHomeActive = computed(() => route?.path === '/library' && !route?.query?.tab && !isEditorActive.value && !isProfileActive.value && !isBookshelfActive.value)
 const isReadingActive = computed(() => route?.path?.startsWith('/library/stories/') || (route?.path === '/library' && route?.query?.tab === 'reading'))
+const sidebarNav = ref<HTMLElement>()
+const activeNavKey = computed(() => {
+  if (isLibraryHomeActive.value) return 'home'
+  if (isBookshelfActive.value) return 'library'
+  if (isReadingActive.value) return 'reading'
+  if (isEditorActive.value) return 'editor'
+  return 'none'
+})
+
+// Only the active icon receives a stable key. Auto Motion can then carry that
+// icon between sidebar slots when the route changes without animating every item.
+useAutoMotion(sidebarNav, activeNavKey, {
+  deep: false,
+  // Sidebar navigation is an explicit product interaction; keep the icon
+  // transition even when the operating system requests reduced motion.
+  reduced: false,
+  nested: true,
+  stagger: 0,
+})
 
 const user = computed(() => authStore.user)
 const userDisplayName = computed(() => user.value?.displayName || '')
@@ -114,7 +134,7 @@ async function handleLogout() {
     </div>
 
     <!-- Main Navigation Icons phù hợp hệ thống truyện / Light Novel -->
-    <nav class="sidebar-nav">
+    <nav ref="sidebarNav" class="sidebar-nav" data-motion-scope="sidebar">
       <!-- 1. Tổng quan (Trang chính của Library) -->
       <button
         type="button"
@@ -123,11 +143,13 @@ async function handleLogout() {
         title="Tổng quan"
         @click="handleNav('home')"
       >
-        <Home
-          :size="20"
-          :stroke-width="1.6"
-          :fill="isLibraryHomeActive ? 'currentColor' : 'none'"
-        />
+        <span class="nav-icon" :data-motion-key="isLibraryHomeActive ? 'sidebar:active-icon' : undefined">
+          <Home
+            :size="20"
+            :stroke-width="1.6"
+            :fill="isLibraryHomeActive ? 'currentColor' : 'none'"
+          />
+        </span>
         <span v-if="!isLibraryHomeActive" class="nav-label">Tổng quan</span>
       </button>
 
@@ -139,11 +161,13 @@ async function handleLogout() {
         title="Tủ sách"
         @click="handleNav('library')"
       >
-        <BookOpen
-          :size="20"
-          :stroke-width="1.6"
-          :fill="isBookshelfActive ? 'currentColor' : 'none'"
-        />
+        <span class="nav-icon" :data-motion-key="isBookshelfActive ? 'sidebar:active-icon' : undefined">
+          <BookOpen
+            :size="20"
+            :stroke-width="1.6"
+            :fill="isBookshelfActive ? 'currentColor' : 'none'"
+          />
+        </span>
         <span v-if="!isBookshelfActive" class="nav-label">Tủ sách</span>
       </button>
 
@@ -155,11 +179,13 @@ async function handleLogout() {
         title="Đang đọc"
         @click="handleNav('reading')"
       >
-        <Bookmark
-          :size="20"
-          :stroke-width="1.6"
-          :fill="isReadingActive ? 'currentColor' : 'none'"
-        />
+        <span class="nav-icon" :data-motion-key="isReadingActive ? 'sidebar:active-icon' : undefined">
+          <Bookmark
+            :size="20"
+            :stroke-width="1.6"
+            :fill="isReadingActive ? 'currentColor' : 'none'"
+          />
+        </span>
         <span v-if="!isReadingActive" class="nav-label">Đang đọc</span>
       </button>
 
@@ -171,11 +197,13 @@ async function handleLogout() {
         title="Đăng truyện mới"
         @click="goToEditor"
       >
-        <PenTool
-          :size="20"
-          :stroke-width="1.6"
-          :fill="isEditorActive ? 'currentColor' : 'none'"
-        />
+        <span class="nav-icon" :data-motion-key="isEditorActive ? 'sidebar:active-icon' : undefined">
+          <PenTool
+            :size="20"
+            :stroke-width="1.6"
+            :fill="isEditorActive ? 'currentColor' : 'none'"
+          />
+        </span>
         <span v-if="!isEditorActive" class="nav-label">Đăng truyện</span>
       </button>
     </nav>
@@ -262,6 +290,12 @@ async function handleLogout() {
 .nav-item:hover {
   background-color: rgba(67, 90, 65, 0.06);
   color: var(--sidebar-ink, #303b2f);
+}
+
+.nav-icon {
+  display: grid;
+  place-items: center;
+  line-height: 1;
 }
 
 /* Khi tab đang hoạt động: icon fill, ẩn chữ bên dưới */

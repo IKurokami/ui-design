@@ -6,6 +6,7 @@ import type { CollectionDeck } from '../types'
 const props = defineProps<{
   deck: CollectionDeck
   preview?: boolean
+  motionKey?: string
 }>()
 
 const emit = defineEmits<{
@@ -78,9 +79,10 @@ function leave(source: 'pointer' | 'focus') {
       </div>
 
       <!-- Front Center Card -->
-      <div v-if="covers[0]" :key="'front:' + covers[0]" class="card-layer card-front">
+      <div v-if="covers[0]" :key="'front:' + covers[0]" class="card-layer card-front" :data-motion-key="motionKey ? 'cover:' + motionKey : undefined" :data-motion-allow-inert="motionKey ? '' : undefined">
         <img
           crossorigin="anonymous"
+          v-if="covers[0]"
           @error="imageFailed"
           :src="covers[0]"
           :alt="`${deck.title} bìa chính`"

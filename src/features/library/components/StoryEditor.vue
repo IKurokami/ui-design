@@ -39,6 +39,7 @@ import { createApiClient } from '../../../services/api-client'
 import { friendlyError } from '../../../services/error-handler'
 import { usePageScrollRestoration } from '../../../animations/composables/usePageScrollRestoration'
 import { useAuthStore } from '../../../stores/auth.store'
+import { updateBookshelfStory } from '../bookshelf-state'
 import type { Chapter, Story } from '../types'
 import '../library-theme.css'
 
@@ -55,11 +56,22 @@ const router = useRouter()
 const route = useRoute()
 const client = createApiClient()
 const authStore = useAuthStore()
+type EditMotionSeed = { id: string; userId?: string; title?: string; coverUrl?: string; category?: string; tags?: string; status?: string }
+const editMotionSeed = (() => {
+  if (!route.params.id) return undefined
+  try {
+    const raw = sessionStorage.getItem('moc:editor-motion')
+    sessionStorage.removeItem('moc:editor-motion')
+    if (!raw) return undefined
+    const seed = JSON.parse(raw) as EditMotionSeed
+    return seed.id === String(route.params.id) ? seed : undefined
+  } catch { return undefined }
+})()
 const isLoading = ref(false)
 const loadError = ref('')
 const scrollArea = ref<HTMLElement>()
 usePageScrollRestoration('writing', scrollArea, computed(() => !isLoading.value && !loadError.value))
-const storyOwnerId = ref(props.initialStory?.userId || '')
+const storyOwnerId = ref(props.initialStory?.userId || editMotionSeed?.userId || '')
 const canEdit = computed(() => !storyData.id || storyOwnerId.value === authStore.user?.id)
 const chapterToDelete = ref<Chapter | null>(null)
 const isDeletingChapter = ref(false)
@@ -80,13 +92,13 @@ const activeTab = ref<'editor' | 'chapters' | 'images'>('editor')
 
 // Form state
 const storyData = reactive({
-  id: props.initialStory?.id || '',
-  title: props.initialStory?.title || '',
+  id: props.initialStory?.id || editMotionSeed?.id || '',
+  title: props.initialStory?.title || editMotionSeed?.title || '',
   description: props.initialStory?.description || '',
-  coverUrl: props.initialStory?.coverUrl || '',
-  category: props.initialStory?.category || '',
-  tags: props.initialStory?.tags || '',
-  status: props.initialStory?.status || 'published',
+  coverUrl: props.initialStory?.coverUrl || editMotionSeed?.coverUrl || '',
+  category: props.initialStory?.category || editMotionSeed?.category || '',
+  tags: props.initialStory?.tags || editMotionSeed?.tags || '',
+  status: props.initialStory?.status || editMotionSeed?.status || 'published',
 })
 
 // Chapters list
@@ -1301,7 +1313,9 @@ async function handleSaveStory(navigate = true): Promise<boolean> {
     savedSnapshot.value = snapshot()
     isSaving.value = false
     showToast('Đã lưu truyện thành công')
-    emit('saved', { ...saved, chapters: chapters.value.map(chapter => ({ ...chapter })), chapterCount: chapters.value.length })
+    const savedStory = { ...saved, chapters: chapters.value.map(chapter => ({ ...chapter })), chapterCount: chapters.value.length }
+    updateBookshelfStory(router, savedStory)
+    emit('saved', savedStory)
     if (navigate && route.path.includes('/library/editor') && route.params.id !== storyData.id) {
       await router.replace('/library/editor/' + encodeURIComponent(storyData.id))
     }
@@ -1371,7 +1385,7 @@ async function handleClose() {
 </script>
 
 <template>
-  <div class="studio-layout">
+  <div class="studio-layout" data-motion-scope="stories">
     <!-- 1. Persistent Sidebar containing Brand Logo 'mộc.' at the top -->
     <LibrarySidebar :before-logout="requestLeave" />
 
@@ -1474,16 +1488,18 @@ async function handleClose() {
         </div>
       </header>
 
-      <div v-if="isLoading" class="editor-request-state" role="status"><Loader2 :size="24" class="spin" /> Đang tải truyện…</div>
+      <!-- Overlay, not in flow: shifting the content while loading would move the
+           shared cover's destination mid-flight (bookshelf → editor motion). -->
+      <div v-if="isLoading" class="editor-request-state editor-loading-overlay" role="status"><Loader2 :size="24" class="spin" /> Đang tải truyện…</div>
       <div v-else-if="loadError" class="editor-request-state" role="alert"><p>{{ loadError }}</p><button type="button" class="btn-primary-action" @click="loadStoryDetails(String(route.params.id || props.initialStory?.id || ''))">Thử lại</button></div>
       <p v-else-if="!canEdit" class="editor-readonly-notice">Bạn đang xem truyện của tác giả khác. Chỉ tác giả có thể chỉnh sửa.</p>
       <!-- TAB 1: SOẠN THẢO TRUYỆN CHỮ (Word-like Canvas, Floating Ribbon, Auto-cover) -->
-      <div v-show="activeTab === 'editor'" class="studio-tab-content" :inert="isLoading || !!loadError || isSaving || !!chapterToDelete">
+      <div v-show="activeTab === 'editor'" class="studio-tab-content" :class="{ 'is-loading': isLoading }" :inert="isLoading || !!loadError || isSaving || !!chapterToDelete">
         <main ref="scrollArea" class="editor-scroll-area">
           <div class="word-page-container writing-sheet">
             <section class="story-cover-section" aria-label="Xem trước trong thư viện" @dragover.prevent @drop.prevent="handleCoverDrop">
               <div class="cover-preview-box">
-                <CollectionDeckCard :deck="libraryPreview" preview />
+                <CollectionDeckCard :deck="libraryPreview" :motion-key="storyData.id || undefined" preview />
               </div>
               <div class="cover-controls">
                 <h2>Hiển thị trong thư viện</h2>
@@ -1864,7 +1880,7 @@ async function handleClose() {
             </button>
           </header>
 
-          <section class="gallery-library-preview" aria-label="Xem trước trong thư viện"><h3>Hiển thị trong thư viện</h3><CollectionDeckCard :deck="libraryPreview" preview /></section>
+          <section class="gallery-library-preview" aria-label="Xem trước trong thư viện"><h3>Hiển thị trong thư viện</h3><CollectionDeckCard :deck="libraryPreview" :motion-key="storyData.id || undefined" preview /></section>
           <div v-if="storyGallery.length > 0" class="gallery-grid">
             <article
               v-for="imgUrl in storyGallery"
@@ -2029,8 +2045,9 @@ async function handleClose() {
 
 <style scoped>
 .editor-request-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px; color: var(--library-muted); font-size: 13px; }
+.editor-loading-overlay { position: absolute; top: 72px; left: 50%; z-index: 5; flex-direction: row; gap: 10px; padding: 10px 16px; border-radius: 12px; background: var(--library-surface); transform: translateX(-50%); pointer-events: none; }
 .editor-readonly-notice { margin: 0; padding: 12px 24px; color: var(--library-muted); font-size: 12px; }
-.studio-tab-content[inert] { opacity: .5; }
+.studio-tab-content[inert]:not(.is-loading) { opacity: .5; }
 .story-status-options { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px; }
 .story-status-options button { border: 0; border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 11px; background: color-mix(in oklab, var(--library-accent) 6%, transparent); color: var(--library-muted); cursor: pointer; }
 .story-status-options button[aria-pressed="true"] { background: color-mix(in oklab, var(--library-accent) 16%, transparent); color: var(--library-accent); }

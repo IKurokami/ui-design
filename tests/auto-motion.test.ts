@@ -34,6 +34,16 @@ function bounds(element: HTMLElement, top = 0, left = 0, width = 300, height = 5
 }
 
 describe('automatic discovery and matching', () => {
+  it('matches a bookshelf cover with the editor preview through the shared story identity', () => {
+    const shelf = root('<main data-motion-scope="stories"><button><img data-motion-key="cover:story-1" data-motion-nested src="/uploads/cover.jpg"></button></main>')
+    const snapshot = captureMotion(shelf, { ghosts: true })
+    shelf.remove()
+    const editor = root('<main data-motion-scope="stories"><article><img data-motion-key="cover:story-1" data-motion-nested src="/uploads/cover.jpg"></article></main>')
+    const plan = matchMotion(snapshot, editor)
+    expect(plan.shared.map(pair => pair.before.key)).toEqual([JSON.stringify(['stories', 'cover:story-1'])])
+    snapshot.release()
+  })
+
   it('discovers headings, names, links and images from a scope without per-element markers', () => {
     const before = root('<h1>Trước</h1><input name="email" /><a href="/books/one">Đọc</a><img src="/cover.jpg" />', 'reader')
     const after = root('<img src="/cover.jpg" /><a href="/books/one">Tiếp tục</a><input name="email" /><h1>Sau</h1>', 'reader')
@@ -176,6 +186,16 @@ describe('generic animation lifecycle', () => {
     instance.finish(); await animation
     expect(target.style.visibility).toBe('')
     expect(document.querySelector('[data-motion-overlay]')).toBeNull()
+  })
+  it('keeps a shared cover as one opaque visual instead of crossfading nested image clones', async () => {
+    const before = root('<div data-motion-key="cover:book"><img src="/cover.jpg" /></div>', 'stories')
+    const after = root('<div data-motion-key="cover:book"><img src="/cover.jpg" /></div>', 'stories')
+    bounds(before.querySelector('div')!, 20, 10, 170, 220)
+    bounds(after.querySelector('div')!, 120, 280, 170, 220)
+    const animation = animateMotion(manager(), captureMotion(before, { ghosts: true }), after, { mode: 'overlay' })
+    expect(document.querySelectorAll('[data-motion-overlay] > *')).toHaveLength(1)
+    expect(document.querySelector('[data-motion-overlay] img')?.getAttribute('src')).toBe('/cover.jpg')
+    await animation
   })
   it('does not copy input values, interactive IDs or handlers into visual ghosts', () => {
     const element = root('<article id="live" data-motion-key="book" onclick="alert(1)"><input id="private" name="secret" value="password" /><textarea>private text</textarea></article>').querySelector('article')!

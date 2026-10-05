@@ -44,6 +44,9 @@ export function usePageScrollRestoration(region: string, element: Ref<HTMLElemen
     if (bound && (bound.key !== key || bound.element !== node)) release()
     if (!node) return
     if (!bound) { bound = { key, element: node }; manager?.register(key, region, node) }
+    // Cached page content already has its full height. Restore before the
+    // Transition enter hook measures shared-element destination rectangles.
+    if (ready.value) manager?.restorePending(key)
     await nextTick()
     if (!disposed && bound?.key === key && ready.value) manager?.restorePending(key)
   }

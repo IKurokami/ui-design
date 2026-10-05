@@ -42,8 +42,10 @@ export interface MotionOptions {
   scale?: boolean
 }
 
-/** Preserve scroll viewports; only the portion already on screen may fly out. */
-function visibleRect(element: HTMLElement, rect: DOMRect, root: HTMLElement): DOMRect {
+/** Preserve scroll viewports; only the portion already on screen may fly out.
+ * Marked clips outside the capture root count too: a list component may sit
+ * inside a page-owned scroll viewport it cannot be the root of. */
+function visibleRect(element: HTMLElement, rect: DOMRect, _root: HTMLElement): DOMRect {
   let left = rect.left, top = rect.top, right = rect.right, bottom = rect.bottom
   for (let parent = element.parentElement; parent; parent = parent.parentElement) {
     if (parent.hasAttribute('data-motion-clip')) {
@@ -53,7 +55,6 @@ function visibleRect(element: HTMLElement, rect: DOMRect, root: HTMLElement): DO
         right = Math.min(right, clip.right); bottom = Math.min(bottom, clip.bottom)
       }
     }
-    if (parent === root) break
   }
   return new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top))
 }
@@ -202,15 +203,90 @@ export function animateMotion(manager: AnimationManager, before: MotionSnapshot,
         overlay ??= createMotionOverlay(incoming)
         placeGhost(overlay, ghost, from)
         const nextGhost = createMotionGhost(pair.after.element)
+        // Ghost descendants keep their computed px layout sizes, while rects
+        // include ancestor transforms (perspective + translateZ, page scale…).
+        // Lay each ghost out at its source's untransformed box and express the
+        // on-screen rect purely through scale, so children fill the ghost and
+        // the final frame matches the real node exactly.
+        //
+        // const fromBox = layoutBox(pair.before.size, from)
+        // const toBox = layoutBox(layoutSize(pair.after.element), to)
+        //
+
+        const imageSources = (element: HTMLElement) => {
+          const images: HTMLImageElement[] = element.matches('img')
+            ? [element as HTMLImageElement]
+            : [...element.querySelectorAll<HTMLImageElement>('img')]
+          return images
+          .map(image => image.getAttribute('src') || image.currentSrc)
+        }
+        const sameImageVisual = imageSources(pair.before.element).length === 1
+          && imageSources(pair.after.element).length === 1
+          && imageSources(pair.before.element)[0] === imageSources(pair.after.element)[0]
         gsap.set([pair.before.element, pair.after.element], { visibility: 'hidden' })
-        const size = useScale ? { scaleX: to.width / from.width, scaleY: to.height / from.height } : { width: to.width, height: to.height }
-        timeline.to(ghost, { x: to.left - from.left, y: to.top - from.top, ...size, duration, ease }, 0)
         // Crossfade into the destination's real content and styling, including images.
         placeGhost(overlay, nextGhost, from)
+
         gsap.set(nextGhost, { visibility: 'visible', autoAlpha: 0, ...(useScale
-          ? { scaleX: from.width / to.width, scaleY: from.height / to.height, width: to.width, height: to.height }
-          : { width: from.width, height: from.height }) })
-        timeline.to(nextGhost, { x: to.left - from.left, y: to.top - from.top, ...(useScale ? { scaleX: 1, scaleY: 1 } : size), autoAlpha: 1, duration, ease }, 0)
+                  ? { scaleX: from.width / to.width, scaleY: from.height / to.height, width: to.width, height: to.height }
+                  : { width: from.width, height: from.height }) })
+
+        // if (useScale) {
+        //   gsap.set(ghost, { width: fromBox.width, height: fromBox.height })
+        //   gsap.set(nextGhost, { width: toBox.width, height: toBox.height })
+        // }
+        // gsap.set(nextGhost, { visibility: 'visible', autoAlpha: 0, ...(useScale ? {} : { width: from.width, height: from.height }) })
+        //
+        //
+        // A cover is the same visual on both pages. Crossfading two nested
+        // image clones makes the child repaint one frame after its wrapper.
+        // Keep one opaque ghost and reveal the real node only after it settles.
+        if (sameImageVisual) nextGhost.remove()
+        // The page transition can still change the destination rect while the
+        // shared element is flying. Resolve the destination on every frame so
+        // the final ghost frame and the real node share exactly the same box.
+        const position = (progress: number) => {
+          const current = progress < 0.001 ? to : pair.after.element.getBoundingClientRect()
+          const destination = current.width && current.height ? current : to
+          const x = (destination.left - from.left) * progress
+          const y = (destination.top - from.top) * progress
+          if (useScale) {
+            gsap.set(ghost, {
+              x, y,
+              scaleX: 1 + (destination.width / from.width - 1) * progress,
+              scaleY: 1 + (destination.height / from.height - 1) * progress,
+            })
+            gsap.set(nextGhost, {
+              x, y,
+              width: destination.width,
+              height: destination.height,
+              scaleX: progress ? 1 + (from.width / destination.width - 1) * (1 - progress) : from.width / destination.width,
+              scaleY: progress ? 1 + (from.height / destination.height - 1) * (1 - progress) : from.height / destination.height,
+            })
+          } else {
+            gsap.set(ghost, { x, y, width: from.width + (destination.width - from.width) * progress, height: from.height + (destination.height - from.height) * progress })
+            gsap.set(nextGhost, { x, y, width: from.width + (destination.width - from.width) * progress, height: from.height + (destination.height - from.height) * progress })
+          }
+        }
+        position(0)
+        const size = useScale ? { scaleX: to.width / from.width, scaleY: to.height / from.height } : { width: to.width, height: to.height }
+        if (sameImageVisual) {
+          timeline.to(ghost, {
+            x: to.left - from.left, y: to.top - from.top, ...size, duration, ease,
+            onUpdate(this: gsap.core.Tween) { position(this.progress()) },
+          }, 0)
+          continue
+        }
+        timeline.to(ghost, {
+          x: to.left - from.left, y: to.top - from.top, ...size, duration, ease,
+          onUpdate(this: gsap.core.Tween) { position(this.progress()) },
+        }, 0)
+        timeline.to(nextGhost, {
+          x: to.left - from.left, y: to.top - from.top,
+          ...(useScale ? { scaleX: 1, scaleY: 1 } : size),
+          autoAlpha: 1, duration, ease,
+          onUpdate(this: gsap.core.Tween) { position(this.progress()) },
+        }, 0)
         timeline.to(ghost, { autoAlpha: 0, duration, ease }, 0)
       }
       return

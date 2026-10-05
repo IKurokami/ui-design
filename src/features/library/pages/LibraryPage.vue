@@ -15,6 +15,7 @@ import type { AmbientColors } from '../ambient-surface'
 import { extractAmbientPalette } from '../ambient-palette'
 import { createApiClient } from '../../../services/api-client'
 import { usePageScrollRestoration } from '../../../animations/composables/usePageScrollRestoration'
+import { useLibraryEntrance } from '../../../animations/composables/useLibraryEntrance'
 import '../library-theme.css'
 
 const activeCategory = ref('all')
@@ -50,7 +51,10 @@ const client = createApiClient()
 const stories = ref<Story[]>([])
 const isLoading = ref(true)
 const loadError = ref('')
-usePageScrollRestoration('main', scrollArea, computed(() => !isLoading.value && !loadError.value))
+const contentReady = computed(() => !isLoading.value && !loadError.value)
+usePageScrollRestoration('main', scrollArea, contentReady)
+const layout = ref<HTMLElement>()
+useLibraryEntrance(layout, scrollArea, computed(() => !isLoading.value))
 const isReading = computed(() => route.query.tab === 'reading')
 let requestVersion = 0
 async function loadMissingPreviews(data: Story[], version: number) {
@@ -130,7 +134,7 @@ function onSelectDeck(deck: CollectionDeck) {
 </script>
 
 <template>
-  <div class="library-layout" :class="{ 'reading-library-layout': isReading }">
+  <div ref="layout" class="library-layout" :class="{ 'reading-library-layout': isReading }">
     <LibrarySidebar />
 
     <main class="library-main-wrapper">
@@ -138,7 +142,7 @@ function onSelectDeck(deck: CollectionDeck) {
       <AmbientBackdrop v-if="!isReading" ref="ambient" />
 
       <!-- Scrollable Content Viewport -->
-      <div ref="scrollArea" class="library-scroll-area">
+      <div ref="scrollArea" class="library-scroll-area" data-motion-clip>
         <div class="library-container">
           <ReadingHistory v-if="isReading" :stories="stories" :loading="isLoading" :error="loadError" @retry="loadStories" />
           <template v-else>

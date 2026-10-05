@@ -1,14 +1,25 @@
-import { nextTick, onBeforeUnmount, watch, type ComputedRef, type Ref } from 'vue'
+import { nextTick, onBeforeUnmount, provide, watch, type ComputedRef, type Ref } from 'vue'
 import gsap from 'gsap'
 import { Flip } from 'gsap/Flip'
 import { AnimationManager } from '../core/animation-manager'
 import { animateMotion, captureMotion, type MotionSnapshot } from '../auto/motion'
+import { pageMotionSettledKey } from './page-motion-settled'
 gsap.registerPlugin(Flip)
 const pageMotion = { duration: 0.62, ease: 'power3.inOut', depthX: -4, depthScale: 0.95 }
+// Let the incoming page finish its own transform before the shared cover is
+// replaced by the real destination node. This prevents a final-frame snap.
+const sharedMotionDuration = pageMotion.duration + 0.08
 const pageProps = 'transform,transformOrigin,opacity,visibility,pointerEvents,zIndex,willChange,borderRadius,boxShadow'
 export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: ComputedRef<boolean>, direction?: Ref<'push' | 'pop'>, brandLayout?: ComputedRef<string>) {
   const tweens = new Map<Element, gsap.core.Tween>()
   const sharedManager = new AnimationManager()
+  const entering = new Map<Element, { promise: Promise<void>; resolve: () => void }>()
+  provide(pageMotionSettledKey, async element => {
+    // Child mounted hooks run before the parent Transition enter hook.
+    await nextTick()
+    const page = element?.closest('.page-screen')
+    if (page) await entering.get(page)?.promise
+  })
   let pending: MotionSnapshot | undefined
   let logo: gsap.core.Timeline | undefined
   let logoTargets: Element[] = []
@@ -40,6 +51,8 @@ export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: 
   function reset(element: Element) {
     tweens.get(element)?.kill()
     tweens.delete(element)
+    entering.get(element)?.resolve()
+    entering.delete(element)
     gsap.set(element, { clearProps: pageProps })
   }
   function cancel(element: Element) {
@@ -50,13 +63,23 @@ export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: 
   }
   function enter(element: Element, done: () => void) {
     reset(element)
+    let pageComplete!: () => void
+    let resolve!: () => void
+    const pageFinished = new Promise<void>(complete => { pageComplete = complete })
+    const entry = { promise: new Promise<void>(complete => { resolve = complete }), resolve: () => resolve() }
+    entering.set(element, entry)
     // Measure destination children at rest BEFORE transforming the page root.
     const captured = pending
     pending = undefined
+    let sharedFinished = Promise.resolve()
     if (captured && element instanceof HTMLElement) {
-      void animateMotion(sharedManager, captured, element, { mode: 'overlay', duration: pageMotion.duration, ease: pageMotion.ease })
+      sharedFinished = animateMotion(sharedManager, captured, element, { mode: 'overlay', duration: sharedMotionDuration, ease: pageMotion.ease, nested: true })
         .catch(error => console.error('[motion] Shared page animation failed', error))
     } else captured?.release()
+    void Promise.all([pageFinished, sharedFinished]).then(() => {
+      entry.resolve()
+      if (entering.get(element) === entry) entering.delete(element)
+    })
     const push = direction ? direction.value === 'push' : isInnerPage.value
     gsap.set(element, { zIndex: push ? 2 : 1, transformOrigin: '50% 50%', willChange: 'transform', boxShadow: push ? '-24px 0 64px rgba(0,0,0,0.18)' : 'none' })
     tweens.set(element, gsap.fromTo(element,
@@ -65,6 +88,7 @@ export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: 
         tweens.delete(element)
         gsap.set(element, { clearProps: pageProps })
         done()
+        pageComplete()
       } },
     ))
   }
@@ -87,6 +111,6 @@ export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: 
       },
     }))
   }
-  onBeforeUnmount(() => { revision++; logo?.pause().kill(); sharedManager.dispose(); pending?.release(); tweens.forEach(tween => tween.kill()); tweens.clear() })
+  onBeforeUnmount(() => { revision++; logo?.pause().kill(); sharedManager.dispose(); pending?.release(); tweens.forEach(tween => tween.kill()); tweens.clear(); entering.forEach(entry => entry.resolve()); entering.clear() })
   return { enter, leave, cancel }
 }

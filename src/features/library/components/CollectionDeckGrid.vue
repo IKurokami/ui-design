@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { CollectionDeck, ViewMode } from '../types'
 import CollectionDeckCard from './CollectionDeckCard.vue'
 import { BookOpen, FolderSearch } from '@lucide/vue'
+import { useAutoMotion } from '../../../animations/composables/useAutoMotion'
 
-defineProps<{
+const props = defineProps<{
   decks: CollectionDeck[]
   viewMode?: ViewMode
 }>()
@@ -12,12 +14,24 @@ const emit = defineEmits<{
   select: [deck: CollectionDeck]
   hover: [deck: CollectionDeck, element: HTMLElement]
 }>()
+
+// Filter/search/sort: kept items FLIP, removed ones exit, new ones enter.
+// View mode is part of each key, so switching grid ↔ list crossfades instead of
+// stretching a tall card into a wide row. Value-compared string: preview image
+// updates on the same decks must not retrigger a layout animation.
+const container = ref<HTMLElement>()
+useAutoMotion(container, () => (props.viewMode ?? 'deck') + '|' + props.decks.map(deck => deck.id).join('\u0000'), {
+  deep: false, reduced: false, stagger: 0.025,
+})
 </script>
 
 <template>
-  <div class="deck-grid-container">
+  <!-- Ignored by route-level page motion (it would ghost every card on navigation);
+       list motion captures from the inner root, so this ancestor marker is skipped. -->
+  <div class="deck-grid-container" data-motion-ignore>
+  <div ref="container" data-motion-scope="library-decks">
     <div v-if="decks.length > 0 && viewMode === 'list'" class="deck-list" aria-label="Danh sách bộ truyện">
-      <button v-for="deck in decks" :key="deck.id" class="deck-list-item" type="button"
+      <button v-for="deck in decks" :key="deck.id" :data-motion-key="'list:' + deck.id" class="deck-list-item" type="button"
         @click="emit('select', deck)"
         @mouseenter="emit('hover', deck, $event.currentTarget as HTMLElement)"
         @focus="emit('hover', deck, $event.currentTarget as HTMLElement)">
@@ -31,6 +45,7 @@ const emit = defineEmits<{
       <CollectionDeckCard
         v-for="deck in decks"
         :key="deck.id"
+        :data-motion-key="'deck:' + deck.id"
         :deck="deck"
         @click="emit('select', deck)"
         @hover="(deck, element) => emit('hover', deck, element)"
@@ -38,13 +53,14 @@ const emit = defineEmits<{
     </div>
 
     <!-- Empty State -->
-    <div v-else class="empty-state">
+    <div v-else class="empty-state" data-motion-key="empty">
       <div class="empty-icon">
         <FolderSearch :size="36" :stroke-width="1.5" />
       </div>
       <h3 class="empty-title">Không tìm thấy truyện</h3>
       <p class="empty-desc">Thử tìm kiếm với từ khóa khác hoặc chuyển sang danh mục tổng quan.</p>
     </div>
+  </div>
   </div>
 </template>
 

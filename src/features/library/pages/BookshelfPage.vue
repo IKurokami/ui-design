@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Plus,
@@ -23,29 +23,36 @@ import type { AmbientColors } from '../ambient-surface'
 import { createApiClient } from '../../../services/api-client'
 import { usePageScrollRestoration } from '../../../animations/composables/usePageScrollRestoration'
 import { friendlyError } from '../../../services/error-handler'
+import { pageMotionSettledKey } from '../../../animations/composables/page-motion-settled'
+import { getBookshelfState, type BookshelfSortMode } from '../bookshelf-state'
 import type { Story } from '../types'
 import '../library-theme.css'
 
 const router = useRouter()
 const client = createApiClient()
+const shelfState = getBookshelfState(router)
+const waitForPageMotion = inject(pageMotionSettledKey, async () => {})
 
 // State
-const stories = ref<Story[]>([])
-const isLoading = ref(true)
+const stories = ref<Story[]>(shelfState.stories ?? [])
+const isLoading = ref(!shelfState.stories)
 const loadError = ref('')
 const scrollArea = ref<HTMLElement>()
 usePageScrollRestoration('main', scrollArea, computed(() => !isLoading.value && !loadError.value))
-const searchQuery = ref('')
-const statusFilter = ref<'all' | 'published' | 'draft' | 'completed'>('all')
-type BookshelfSortMode = 'updated' | 'created' | 'chapters' | 'title'
-const sortBy = ref<BookshelfSortMode>('updated')
+const searchQuery = ref(shelfState.searchQuery)
+const statusFilter = ref(shelfState.statusFilter)
+const sortBy = ref<BookshelfSortMode>(shelfState.sortBy)
 const sortOptions: { value: BookshelfSortMode; label: string }[] = [
   { value: 'updated', label: 'Mới cập nhật' },
   { value: 'created', label: 'Mới tạo' },
   { value: 'chapters', label: 'Nhiều chương' },
   { value: 'title', label: 'Tên A–Z' },
 ]
-const viewMode = ref<'grid' | 'table'>('grid')
+const viewMode = ref(shelfState.viewMode)
+watch([stories, searchQuery, statusFilter, sortBy, viewMode], () => {
+  Object.assign(shelfState, { stories: stories.value, searchQuery: searchQuery.value,
+    statusFilter: statusFilter.value, sortBy: sortBy.value, viewMode: viewMode.value })
+}, { flush: 'sync' })
 
 // Modal xóa truyện
 const deleteModal = reactive({
@@ -73,12 +80,19 @@ function showToast(message: string, type: 'success' | 'error' = 'success') {
 }
 
 async function fetchMyStories() {
-  isLoading.value = true
+  const refreshing = !!shelfState.stories
+  isLoading.value = !refreshing
   loadError.value = ''
   try {
-    stories.value = await client.request<Story[]>('/api/stories/mine')
+    const fetched = await client.request<Story[]>('/api/stories/mine')
+    if (refreshing) await waitForPageMotion(scrollArea.value)
+    if (disposed) return
+    stories.value = fetched
+    shelfState.stories = fetched
   } catch (error) {
-    loadError.value = friendlyError(error)
+    if (disposed) return
+    if (refreshing) showToast(friendlyError(error), 'error')
+    else loadError.value = friendlyError(error)
   } finally {
     isLoading.value = false
   }
@@ -187,6 +201,16 @@ function goToCreateStory() {
 }
 
 function goToEditStory(storyId: string) {
+  const selected = stories.value.find(story => story.id === storyId)
+  if (selected) {
+    try {
+      sessionStorage.setItem('moc:editor-motion', JSON.stringify({
+        id: selected.id, userId: selected.userId, title: selected.title,
+        coverUrl: selected.coverUrl || '', category: selected.category || '',
+        tags: selected.tags || '', status: selected.status || 'published',
+      }))
+    } catch { /* sessionStorage is optional */ }
+  }
   router.push(`/library/editor/${storyId}`)
 }
 
@@ -228,7 +252,7 @@ async function confirmDeleteStory() {
 </script>
 
 <template>
-  <div class="library-layout bookshelf-layout">
+  <div class="library-layout bookshelf-layout" data-motion-scope="stories">
     <LibrarySidebar />
     <main class="bookshelf-main">
       <AmbientBackdrop ref="ambient" />
@@ -268,7 +292,7 @@ async function confirmDeleteStory() {
           <div v-else-if="viewMode === 'grid'" class="books-grid-layout">
             <article v-for="story in filteredStories" :key="story.id" class="book-story-card">
               <button type="button" class="book-open" :aria-label="'Soạn thảo ' + story.title" @click="goToEditStory(story.id)" @mouseenter="onStoryHover" @focus="onStoryHover">
-                <div class="book-cover"><img v-if="story.coverUrl" :src="story.coverUrl" alt="" loading="lazy" /><BookOpen v-else :size="38" :stroke-width="1.2" aria-hidden="true" /></div>
+                <div class="book-cover" v-if="story.coverUrl" :data-motion-key="'cover:' + story.id"><img :src="story.coverUrl" alt="" loading="lazy" /></div><div v-else class="book-cover"><BookOpen :size="38" :stroke-width="1.2" aria-hidden="true" /></div>
                 <h2 class="card-title">{{ story.title }}</h2>
                 <div class="card-meta-line"><span v-if="story.category">{{ story.category }}</span><span v-if="story.category" aria-hidden="true">·</span><span>{{ formatNumber(chapterCount(story)) }} chương</span></div>
               </button>
@@ -286,7 +310,7 @@ async function confirmDeleteStory() {
               <thead><tr><th scope="col">Tác phẩm</th><th scope="col" class="col-category">Thể loại</th><th scope="col">Trạng thái</th><th scope="col" class="col-chapters">Chương</th><th scope="col" class="col-actions"><span class="sr-only">Thao tác</span></th></tr></thead>
               <tbody>
                 <tr v-for="story in filteredStories" :key="story.id">
-                  <td><button type="button" class="table-story-link" @click="goToEditStory(story.id)" @mouseenter="onStoryHover" @focus="onStoryHover"><img v-if="story.coverUrl" :src="story.coverUrl" alt="" loading="lazy" /><span v-else class="table-cover-placeholder"><BookOpen :size="20" aria-hidden="true" /></span><span class="table-story-title">{{ story.title }}</span></button></td>
+                  <td><button type="button" class="table-story-link" @click="goToEditStory(story.id)" @mouseenter="onStoryHover" @focus="onStoryHover"><span v-if="story.coverUrl" class="table-cover-motion" :data-motion-key="'cover:' + story.id"><img :src="story.coverUrl" alt="" loading="lazy" /></span><span v-else class="table-cover-placeholder"><BookOpen :size="20" aria-hidden="true" /></span><span class="table-story-title">{{ story.title }}</span></button></td>
                   <td class="col-category">{{ story.category || '—' }}</td>
                   <td><span class="story-status-tag" :class="'status-' + (story.status || 'published')">{{ statusLabel(story) }}</span></td>
                   <td class="col-chapters">{{ formatNumber(chapterCount(story)) }}</td>
@@ -361,7 +385,8 @@ button:focus-visible { outline: none; background: color-mix(in oklab, var(--libr
 .bookshelf-table td { padding: 14px 12px; font-size: 12px; color: var(--library-muted); }
 .bookshelf-table tbody tr:hover { background: var(--control-surface); }
 .table-story-link { display: flex; align-items: center; gap: 18px; width: 100%; padding: 0; border-radius: 8px; background: transparent; color: var(--library-ink); text-align: left; }
-.table-story-link img, .table-cover-placeholder { display: grid; place-items: center; width: 44px; height: 62px; flex-shrink: 0; object-fit: cover; border-radius: 6px; background: var(--control-surface); }
+.table-cover-motion, .table-cover-placeholder { display: grid; place-items: center; width: 44px; height: 62px; flex-shrink: 0; overflow: hidden; border-radius: 6px; background: var(--control-surface); }
+.table-cover-motion img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .table-story-title { font-size: 14px; font-weight: 600; line-height: 1.5; }
 .col-chapters { text-align: right; font-variant-numeric: tabular-nums; }
 .col-actions .card-actions { justify-content: flex-end; }
