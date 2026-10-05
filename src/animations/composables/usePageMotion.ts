@@ -9,6 +9,9 @@ const pageMotion = { duration: 0.62, ease: 'power3.inOut', depthX: -4, depthScal
 // Let the incoming page finish its own transform before the shared cover is
 // replaced by the real destination node. This prevents a final-frame snap.
 const sharedMotionDuration = pageMotion.duration + 0.08
+// Shared covers use a balanced acceleration and deceleration curve so the
+// flight feels continuous with the page transition.
+const sharedMotionEase = 'power1.out'
 const pageProps = 'transform,transformOrigin,opacity,visibility,pointerEvents,zIndex,willChange,borderRadius,boxShadow'
 export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: ComputedRef<boolean>, direction?: Ref<'push' | 'pop'>, brandLayout?: ComputedRef<string>) {
   const tweens = new Map<Element, gsap.core.Tween>()
@@ -73,7 +76,7 @@ export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: 
     pending = undefined
     let sharedFinished = Promise.resolve()
     if (captured && element instanceof HTMLElement) {
-      sharedFinished = animateMotion(sharedManager, captured, element, { mode: 'overlay', duration: sharedMotionDuration, ease: pageMotion.ease, nested: true })
+      sharedFinished = animateMotion(sharedManager, captured, element, { mode: 'overlay', duration: sharedMotionDuration, ease: sharedMotionEase, nested: true })
         .catch(error => console.error('[motion] Shared page animation failed', error))
     } else captured?.release()
     void Promise.all([pageFinished, sharedFinished]).then(() => {

@@ -197,6 +197,24 @@ describe('generic animation lifecycle', () => {
     expect(document.querySelector('[data-motion-overlay] img')?.getAttribute('src')).toBe('/cover.jpg')
     await animation
   })
+  it('uses layout dimensions for scale ghosts when measured rects include transforms', async () => {
+    const before = root('<article data-motion-key="book">Old book</article>', 'books')
+    const after = root('<article data-motion-key="book">New book</article>', 'books')
+    const source = before.querySelector('article')!
+    const destination = after.querySelector('article')!
+    bounds(source, 20, 10, 200, 240)
+    bounds(destination, 120, 280, 300, 360)
+    Object.defineProperties(source, { offsetWidth: { configurable: true, value: 100 }, offsetHeight: { configurable: true, value: 120 } })
+    Object.defineProperties(destination, { offsetWidth: { configurable: true, value: 150 }, offsetHeight: { configurable: true, value: 180 } })
+    const animation = animateMotion(manager(), captureMotion(before, { ghosts: true }), after, { mode: 'overlay', scale: true })
+    const ghosts = [...document.querySelectorAll<HTMLElement>('[data-motion-overlay] > *')]
+    expect(ghosts).toHaveLength(2)
+    expect(ghosts[0]!.style.width).toBe('100px')
+    expect(ghosts[1]!.style.width).toBe('150px')
+    expect(Number(gsap.getProperty(ghosts[0]!, 'scaleX'))).toBe(2)
+    expect(Number(gsap.getProperty(ghosts[1]!, 'scaleX'))).toBeCloseTo(200 / 150)
+    await animation
+  })
   it('does not copy input values, interactive IDs or handlers into visual ghosts', () => {
     const element = root('<article id="live" data-motion-key="book" onclick="alert(1)"><input id="private" name="secret" value="password" /><textarea>private text</textarea></article>').querySelector('article')!
     const ghost = createMotionGhost(element)

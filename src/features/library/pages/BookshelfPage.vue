@@ -99,6 +99,7 @@ async function fetchMyStories() {
 }
 
 onMounted(() => {
+  preloadEditor()
   fetchMyStories()
 })
 
@@ -171,12 +172,19 @@ function chapterCount(story: Story) {
 }
 const ambient = ref<InstanceType<typeof AmbientBackdrop>>()
 const paletteCache = new WeakMap<HTMLElement, AmbientColors>()
+let editorPrefetch: Promise<unknown> | undefined
+function preloadEditor() {
+  // Start the lazy route chunk on hover/press so navigation can animate while
+  // the editor data request continues in parallel.
+  editorPrefetch ??= import('../components/StoryEditor.vue')
+}
 let disposed = false
 onBeforeUnmount(() => {
   disposed = true
   if (toast.timer) clearTimeout(toast.timer)
 })
 async function onStoryHover(event: Event) {
+  preloadEditor()
   const element = event.currentTarget as HTMLElement
   const bounds = element.getBoundingClientRect()
   let colors = paletteCache.get(element)
@@ -197,10 +205,12 @@ function formatNumber(num: number): string {
 
 // Điều hướng
 function goToCreateStory() {
+  preloadEditor()
   router.push('/library/editor')
 }
 
 function goToEditStory(storyId: string) {
+  preloadEditor()
   const selected = stories.value.find(story => story.id === storyId)
   if (selected) {
     try {
@@ -260,7 +270,7 @@ async function confirmDeleteStory() {
         <div class="bookshelf-container">
           <header class="bookshelf-header">
             <LibraryHeader title="Tủ sách của tôi" :result-count="filteredStories.length" />
-            <button type="button" class="btn-primary-action btn-create-story" @click="goToCreateStory">
+            <button type="button" class="btn-primary-action btn-create-story" @click="goToCreateStory" @pointerdown="preloadEditor">
               <Plus :size="16" aria-hidden="true" /> Đăng truyện
             </button>
           </header>
@@ -291,7 +301,7 @@ async function confirmDeleteStory() {
           </div>
           <div v-else-if="viewMode === 'grid'" class="books-grid-layout">
             <article v-for="story in filteredStories" :key="story.id" class="book-story-card">
-              <button type="button" class="book-open" :aria-label="'Soạn thảo ' + story.title" @click="goToEditStory(story.id)" @mouseenter="onStoryHover" @focus="onStoryHover">
+              <button type="button" class="book-open" :aria-label="'Soạn thảo ' + story.title" @click="goToEditStory(story.id)" @pointerdown="preloadEditor" @mouseenter="onStoryHover" @focus="onStoryHover">
                 <div class="book-cover" v-if="story.coverUrl" :data-motion-key="'cover:' + story.id"><img :src="story.coverUrl" alt="" loading="lazy" /></div><div v-else class="book-cover"><BookOpen :size="38" :stroke-width="1.2" aria-hidden="true" /></div>
                 <h2 class="card-title">{{ story.title }}</h2>
                 <div class="card-meta-line"><span v-if="story.category">{{ story.category }}</span><span v-if="story.category" aria-hidden="true">·</span><span>{{ formatNumber(chapterCount(story)) }} chương</span></div>
@@ -299,7 +309,7 @@ async function confirmDeleteStory() {
               <div class="card-footer">
                 <span class="story-status-tag" :class="'status-' + (story.status || 'published')">{{ statusLabel(story) }}</span>
                 <div class="card-actions">
-                  <button type="button" class="btn-card-edit" :aria-label="'Soạn thảo ' + story.title" title="Soạn thảo" @click="goToEditStory(story.id)"><PenTool :size="14" /></button>
+                  <button type="button" class="btn-card-edit" :aria-label="'Soạn thảo ' + story.title" title="Soạn thảo" @click="goToEditStory(story.id)" @pointerdown="preloadEditor"><PenTool :size="14" /></button>
                   <button type="button" class="btn-card-delete" :aria-label="'Xóa ' + story.title" title="Xóa truyện" @click="openDeleteModal(story)"><Trash2 :size="14" /></button>
                 </div>
               </div>
@@ -310,11 +320,11 @@ async function confirmDeleteStory() {
               <thead><tr><th scope="col">Tác phẩm</th><th scope="col" class="col-category">Thể loại</th><th scope="col">Trạng thái</th><th scope="col" class="col-chapters">Chương</th><th scope="col" class="col-actions"><span class="sr-only">Thao tác</span></th></tr></thead>
               <tbody>
                 <tr v-for="story in filteredStories" :key="story.id">
-                  <td><button type="button" class="table-story-link" @click="goToEditStory(story.id)" @mouseenter="onStoryHover" @focus="onStoryHover"><span v-if="story.coverUrl" class="table-cover-motion" :data-motion-key="'cover:' + story.id"><img :src="story.coverUrl" alt="" loading="lazy" /></span><span v-else class="table-cover-placeholder"><BookOpen :size="20" aria-hidden="true" /></span><span class="table-story-title">{{ story.title }}</span></button></td>
+                  <td><button type="button" class="table-story-link" @click="goToEditStory(story.id)" @pointerdown="preloadEditor" @mouseenter="onStoryHover" @focus="onStoryHover"><span v-if="story.coverUrl" class="table-cover-motion" :data-motion-key="'cover:' + story.id"><img :src="story.coverUrl" alt="" loading="lazy" /></span><span v-else class="table-cover-placeholder"><BookOpen :size="20" aria-hidden="true" /></span><span class="table-story-title">{{ story.title }}</span></button></td>
                   <td class="col-category">{{ story.category || '—' }}</td>
                   <td><span class="story-status-tag" :class="'status-' + (story.status || 'published')">{{ statusLabel(story) }}</span></td>
                   <td class="col-chapters">{{ formatNumber(chapterCount(story)) }}</td>
-                  <td class="col-actions"><div class="card-actions"><button type="button" class="btn-card-edit" :aria-label="'Soạn thảo ' + story.title" title="Soạn thảo" @click="goToEditStory(story.id)"><PenTool :size="14" /></button><button type="button" class="btn-card-delete" :aria-label="'Xóa ' + story.title" title="Xóa truyện" @click="openDeleteModal(story)"><Trash2 :size="14" /></button></div></td>
+                  <td class="col-actions"><div class="card-actions"><button type="button" class="btn-card-edit" :aria-label="'Soạn thảo ' + story.title" title="Soạn thảo" @click="goToEditStory(story.id)" @pointerdown="preloadEditor"><PenTool :size="14" /></button><button type="button" class="btn-card-delete" :aria-label="'Xóa ' + story.title" title="Xóa truyện" @click="openDeleteModal(story)"><Trash2 :size="14" /></button></div></td>
                 </tr>
               </tbody>
             </table>
@@ -370,6 +380,7 @@ button:focus-visible { outline: none; background: color-mix(in oklab, var(--libr
 .book-cover { display: grid; place-items: center; width: 170px; max-width: 100%; aspect-ratio: 17 / 22; overflow: hidden; border-radius: 16px; margin-bottom: 23px; background: var(--control-surface); color: var(--library-accent); transition: transform .25s ease; }
 .book-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .book-open:hover .book-cover, .book-open:focus-visible .book-cover { transform: translateY(-5px); }
+.book-open:active .book-cover { transform: translateY(-2px) scale(.985); transition-duration: .08s; }
 .card-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin: 0 0 7px; font-size: 14px; font-weight: 600; line-height: 1.5; text-align: center; }
 .card-meta-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; color: var(--library-muted); font-size: 11px; line-height: 1.6; }
 .card-footer { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 9px; }

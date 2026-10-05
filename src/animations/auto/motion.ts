@@ -6,7 +6,25 @@ import { assignFlipIds, discoverMotion, type MotionDiagnostic, type MotionTarget
 import { createMotionGhost, createMotionOverlay, placeGhost } from './ghosts'
 
 gsap.registerPlugin(Flip)
-export interface CapturedTarget extends MotionTarget { rect: DOMRect; visibleRect: DOMRect; ghost?: HTMLElement }
+interface LayoutSize { width: number; height: number }
+interface LayoutBox extends LayoutSize { left: number; top: number }
+
+/** Read the element's untransformed layout dimensions for scale based ghosts. */
+function layoutSize(element: HTMLElement): LayoutSize {
+  const rect = element.getBoundingClientRect()
+  const style = getComputedStyle(element)
+  return {
+    width: element.offsetWidth || parseFloat(style.width) || rect.width,
+    height: element.offsetHeight || parseFloat(style.height) || rect.height,
+  }
+}
+
+/** Keep the screen position from the measured rect, but use layout dimensions. */
+function layoutBox(size: LayoutSize, rect: DOMRect): LayoutBox {
+  return { left: rect.left, top: rect.top, width: size.width, height: size.height }
+}
+
+export interface CapturedTarget extends MotionTarget { rect: DOMRect; visibleRect: DOMRect; size: LayoutSize; ghost?: HTMLElement }
 export interface MotionSnapshot {
   root: HTMLElement
   targets: CapturedTarget[]
@@ -78,7 +96,7 @@ export function captureMotion(root: HTMLElement, options: { ghosts?: boolean } =
       const rect = target.element.getBoundingClientRect()
       const visible = visibleRect(target.element, rect, root)
       const outsideStrip = target.element.hasAttribute('data-motion-overlay-target') && (!visible.width || !visible.height)
-      return { ...target, rect, visibleRect: visible, ghost: options.ghosts && !outsideStrip ? createMotionGhost(target.element) : undefined }
+      return { ...target, rect, visibleRect: visible, size: layoutSize(target.element), ghost: options.ghosts && !outsideStrip ? createMotionGhost(target.element) : undefined }
     })
     return {
       root, targets, diagnostics: discovery.diagnostics,
@@ -201,17 +219,16 @@ export function animateMotion(manager: AnimationManager, before: MotionSnapshot,
         const to = pair.after.element.getBoundingClientRect()
         if (!ghost || !from.width || !from.height || !to.width || !to.height || pair.after.element.matches('input, textarea, select, canvas, video') || pair.after.element.querySelector('input, textarea, select, canvas, video')) continue
         overlay ??= createMotionOverlay(incoming)
-        placeGhost(overlay, ghost, from)
+        const fromBox = layoutBox(pair.before.size, from)
+        const toBox = layoutBox(layoutSize(pair.after.element), to)
+        const sourceBox = useScale ? fromBox : from
+        const destinationBox = useScale ? toBox : to
+        const sourceScaleX = from.width / fromBox.width || 1
+        const sourceScaleY = from.height / fromBox.height || 1
+        const destinationGhostScaleX = to.width / fromBox.width || 1
+        const destinationGhostScaleY = to.height / fromBox.height || 1
+        placeGhost(overlay, ghost, sourceBox)
         const nextGhost = createMotionGhost(pair.after.element)
-        // Ghost descendants keep their computed px layout sizes, while rects
-        // include ancestor transforms (perspective + translateZ, page scale…).
-        // Lay each ghost out at its source's untransformed box and express the
-        // on-screen rect purely through scale, so children fill the ghost and
-        // the final frame matches the real node exactly.
-        //
-        // const fromBox = layoutBox(pair.before.size, from)
-        // const toBox = layoutBox(layoutSize(pair.after.element), to)
-        //
 
         const imageSources = (element: HTMLElement) => {
           const images: HTMLImageElement[] = element.matches('img')
@@ -225,19 +242,13 @@ export function animateMotion(manager: AnimationManager, before: MotionSnapshot,
           && imageSources(pair.before.element)[0] === imageSources(pair.after.element)[0]
         gsap.set([pair.before.element, pair.after.element], { visibility: 'hidden' })
         // Crossfade into the destination's real content and styling, including images.
-        placeGhost(overlay, nextGhost, from)
+        placeGhost(overlay, nextGhost, sourceBox)
+        if (useScale) {
+          gsap.set(ghost, { width: fromBox.width, height: fromBox.height, scaleX: sourceScaleX, scaleY: sourceScaleY })
+          gsap.set(nextGhost, { width: toBox.width, height: toBox.height, scaleX: sourceScaleX * fromBox.width / toBox.width, scaleY: sourceScaleY * fromBox.height / toBox.height })
+        }
+        gsap.set(nextGhost, { visibility: 'visible', autoAlpha: 0, ...(useScale ? {} : { width: from.width, height: from.height }) })
 
-        gsap.set(nextGhost, { visibility: 'visible', autoAlpha: 0, ...(useScale
-                  ? { scaleX: from.width / to.width, scaleY: from.height / to.height, width: to.width, height: to.height }
-                  : { width: from.width, height: from.height }) })
-
-        // if (useScale) {
-        //   gsap.set(ghost, { width: fromBox.width, height: fromBox.height })
-        //   gsap.set(nextGhost, { width: toBox.width, height: toBox.height })
-        // }
-        // gsap.set(nextGhost, { visibility: 'visible', autoAlpha: 0, ...(useScale ? {} : { width: from.width, height: from.height }) })
-        //
-        //
         // A cover is the same visual on both pages. Crossfading two nested
         // image clones makes the child repaint one frame after its wrapper.
         // Keep one opaque ghost and reveal the real node only after it settles.
@@ -247,42 +258,41 @@ export function animateMotion(manager: AnimationManager, before: MotionSnapshot,
         // the final ghost frame and the real node share exactly the same box.
         const position = (progress: number) => {
           const current = progress < 0.001 ? to : pair.after.element.getBoundingClientRect()
-          const destination = current.width && current.height ? current : to
-          const x = (destination.left - from.left) * progress
-          const y = (destination.top - from.top) * progress
+          const measured = current.width && current.height ? current : to
+          const destination = useScale ? layoutBox(layoutSize(pair.after.element), measured) : measured
+          const x = (destination.left - sourceBox.left) * progress
+          const y = (destination.top - sourceBox.top) * progress
           if (useScale) {
             gsap.set(ghost, {
               x, y,
-              scaleX: 1 + (destination.width / from.width - 1) * progress,
-              scaleY: 1 + (destination.height / from.height - 1) * progress,
+              scaleX: sourceScaleX + (measured.width / fromBox.width - sourceScaleX) * progress,
+              scaleY: sourceScaleY + (measured.height / fromBox.height - sourceScaleY) * progress,
             })
-            gsap.set(nextGhost, {
+            if (nextGhost.parentElement) gsap.set(nextGhost, {
               x, y,
-              width: destination.width,
-              height: destination.height,
-              scaleX: progress ? 1 + (from.width / destination.width - 1) * (1 - progress) : from.width / destination.width,
-              scaleY: progress ? 1 + (from.height / destination.height - 1) * (1 - progress) : from.height / destination.height,
+              scaleX: (sourceScaleX * fromBox.width / toBox.width) + (measured.width / toBox.width - sourceScaleX * fromBox.width / toBox.width) * progress,
+              scaleY: (sourceScaleY * fromBox.height / toBox.height) + (measured.height / toBox.height - sourceScaleY * fromBox.height / toBox.height) * progress,
             })
           } else {
-            gsap.set(ghost, { x, y, width: from.width + (destination.width - from.width) * progress, height: from.height + (destination.height - from.height) * progress })
-            gsap.set(nextGhost, { x, y, width: from.width + (destination.width - from.width) * progress, height: from.height + (destination.height - from.height) * progress })
+            gsap.set(ghost, { x, y, width: sourceBox.width + (destination.width - sourceBox.width) * progress, height: sourceBox.height + (destination.height - sourceBox.height) * progress })
+            if (nextGhost.parentElement) gsap.set(nextGhost, { x, y, width: sourceBox.width + (destination.width - sourceBox.width) * progress, height: sourceBox.height + (destination.height - sourceBox.height) * progress })
           }
         }
         position(0)
-        const size = useScale ? { scaleX: to.width / from.width, scaleY: to.height / from.height } : { width: to.width, height: to.height }
+        const size = useScale ? { scaleX: destinationGhostScaleX, scaleY: destinationGhostScaleY } : { width: to.width, height: to.height }
         if (sameImageVisual) {
           timeline.to(ghost, {
-            x: to.left - from.left, y: to.top - from.top, ...size, duration, ease,
+            x: destinationBox.left - sourceBox.left, y: destinationBox.top - sourceBox.top, ...size, duration, ease,
             onUpdate(this: gsap.core.Tween) { position(this.progress()) },
           }, 0)
           continue
         }
         timeline.to(ghost, {
-          x: to.left - from.left, y: to.top - from.top, ...size, duration, ease,
+          x: destinationBox.left - sourceBox.left, y: destinationBox.top - sourceBox.top, ...size, duration, ease,
           onUpdate(this: gsap.core.Tween) { position(this.progress()) },
         }, 0)
         timeline.to(nextGhost, {
-          x: to.left - from.left, y: to.top - from.top,
+          x: destinationBox.left - sourceBox.left, y: destinationBox.top - sourceBox.top,
           ...(useScale ? { scaleX: 1, scaleY: 1 } : size),
           autoAlpha: 1, duration, ease,
           onUpdate(this: gsap.core.Tween) { position(this.progress()) },

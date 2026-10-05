@@ -39,7 +39,7 @@ export function createMotionOverlay(root?: HTMLElement) {
   return overlay
 }
 
-export function placeGhost(overlay: HTMLElement, ghost: HTMLElement, rect: DOMRect) {
+export function placeGhost(overlay: HTMLElement, ghost: HTMLElement, rect: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>) {
   Object.assign(ghost.style, { position: 'absolute', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, maxWidth: 'none', maxHeight: 'none' })
   overlay.append(ghost)
 }
