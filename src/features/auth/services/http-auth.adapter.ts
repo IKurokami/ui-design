@@ -12,6 +12,13 @@ export function createHttpAuthAdapter(baseUrl = ''): AuthAdapter {
         signal,
       })
     },
+    async adminLogin(values: LoginValues, signal?: AbortSignal): Promise<AuthSession> {
+      return client.request<AuthSession>('/api/auth/admin/login', {
+        method: 'POST',
+        body: JSON.stringify(values),
+        signal,
+      })
+    },
     async register(values: RegisterValues, signal?: AbortSignal): Promise<AuthSession> {
       return client.request<AuthSession>('/api/auth/register', {
         method: 'POST',

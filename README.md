@@ -13,7 +13,9 @@ pnpm build
 pnpm test
 ```
 
-Mở http://127.0.0.1:5173. Các URL: `/login`, `/register`.
+Mở http://127.0.0.1:5173. Các URL: `/login`, `/register`, `/admin/login`.
+
+`/admin/login` là luồng đăng nhập quản trị riêng. Admin có thêm mục Người dùng; moderator chỉ có mục Truyện. Cả hai role đều mở được trình soạn thảo để sửa, quản lý chương, cập nhật trạng thái và xóa bất kỳ truyện nào. Quyền cuối cùng luôn do backend kiểm tra.
 
 ## Navigation Stack
 

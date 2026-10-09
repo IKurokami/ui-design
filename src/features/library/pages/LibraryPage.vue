@@ -49,6 +49,10 @@ const route = useRoute()
 const router = useRouter()
 const client = createApiClient()
 const stories = ref<Story[]>([])
+const hasMore = ref(true)
+const nextPage = ref(1)
+const loadingMore = ref(false)
+const loadSentinel = ref<HTMLElement>()
 const isLoading = ref(true)
 const loadError = ref('')
 const contentReady = computed(() => !isLoading.value && !loadError.value)
@@ -57,6 +61,7 @@ const layout = ref<HTMLElement>()
 useLibraryEntrance(layout, scrollArea, computed(() => !isLoading.value))
 const isReading = computed(() => route.query.tab === 'reading')
 let requestVersion = 0
+let loadObserver: IntersectionObserver | undefined
 async function loadMissingPreviews(data: Story[], version: number) {
   // The current server may not include previewImages in summaries yet.
   // Read real story details only when needed, with at most four requests in flight.
@@ -78,11 +83,15 @@ async function loadMissingPreviews(data: Story[], version: number) {
 }
 async function loadStories() {
   const version = ++requestVersion
+  nextPage.value = 1; hasMore.value = true
   isLoading.value = true
   loadError.value = ''
   try {
     const reading = isReading.value
-    const data = await client.request<Story[]>(reading ? '/api/stories?reading=true' : '/api/stories')
+    const path = reading ? '/api/stories?reading=true&paginated=true&page=1&pageSize=24' : '/api/stories?paginated=true&page=1&pageSize=24'
+    const response = await client.request<{items:Story[];hasMore?:boolean;nextPage?:number} | Story[]>(path)
+    const data = Array.isArray(response) ? response : response.items
+    if (!Array.isArray(response)) { hasMore.value = Boolean(response.hasMore); nextPage.value = response.nextPage || 2 } else { hasMore.value = data.length >= 24; nextPage.value = 2 }
     // Older running servers omit progress in summaries; still use persisted API data.
     if (reading) {
       const missing = data.filter(story => !story.readingProgress)
@@ -114,11 +123,23 @@ async function loadStories() {
     if (!disposed && version === requestVersion) isLoading.value = false
   }
 }
+async function loadMore() {
+  if (!hasMore.value || loadingMore.value || isLoading.value) return
+  loadingMore.value = true
+  try {
+    const page = nextPage.value; const path = isReading.value ? `/api/stories?reading=true&paginated=true&page=${page}&pageSize=24` : `/api/stories?paginated=true&page=${page}&pageSize=24`
+    const response = await client.request<{items:Story[];hasMore?:boolean;nextPage?:number} | Story[]>(path); const incoming = Array.isArray(response) ? response : response.items
+    const known = new Set(stories.value.map(story => story.id)); stories.value = [...stories.value, ...incoming.filter(story => !known.has(story.id))]
+    hasMore.value = Array.isArray(response) ? incoming.length === 24 : Boolean(response.hasMore); nextPage.value = Array.isArray(response) ? page + 1 : (response.nextPage || page + 1)
+  } catch (cause) { loadError.value = friendlyError(cause) } finally { loadingMore.value = false }
+}
 watch(isReading, () => { activeCategory.value = 'all'; loadStories() })
 onMounted(() => {
   loadStories()
+  if (typeof IntersectionObserver !== 'undefined') { loadObserver = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) void loadMore() }, { root: scrollArea.value ?? null, rootMargin: '500px' }); if (loadSentinel.value) loadObserver.observe(loadSentinel.value) }
   if (route.query.create === 'true' || route.query.create === '1') router.push('/library/editor')
 })
+onBeforeUnmount(() => loadObserver?.disconnect())
 const allCollections = computed(() => stories.value.map(storyToDeck))
 const categories = computed(() => storyCategories(stories.value))
 const filteredDecks = computed(() => allCollections.value.filter(deck => {
@@ -167,6 +188,7 @@ function onSelectDeck(deck: CollectionDeck) {
               @hover="onDeckHover"
             />
           </template>
+          <div ref="loadSentinel" class="library-load-sentinel" aria-live="polite"><Loader2 v-if="loadingMore" :size="20" class="spin" /><span v-else-if="!hasMore">Đã hiển thị hết truyện</span></div>
         </div>
       </div>
     </main>
@@ -176,6 +198,7 @@ function onSelectDeck(deck: CollectionDeck) {
 <style scoped>
 .reading-library-layout :deep(.user-avatar-wrap), .reading-library-layout :deep(.avatar-btn) { box-shadow: none; }
 .library-request-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: 300px; color: var(--library-muted); font-size: 13px; text-align: center; }
+.library-load-sentinel { display:flex; justify-content:center; align-items:center; min-height:52px; color:var(--library-muted); font-size:11px; }
 .library-request-state button { border: 0; border-radius: 10px; padding: 10px 16px; background: color-mix(in oklab, var(--library-accent) 10%, transparent); color: var(--library-accent); font: inherit; cursor: pointer; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

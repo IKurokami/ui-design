@@ -72,7 +72,7 @@ const loadError = ref('')
 const scrollArea = ref<HTMLElement>()
 usePageScrollRestoration('writing', scrollArea, computed(() => !isLoading.value && !loadError.value))
 const storyOwnerId = ref(props.initialStory?.userId || editMotionSeed?.userId || '')
-const canEdit = computed(() => !storyData.id || storyOwnerId.value === authStore.user?.id)
+const canEdit = computed(() => !storyData.id || storyOwnerId.value === authStore.user?.id || authStore.user?.role === 'admin' || authStore.user?.role === 'moderator')
 const chapterToDelete = ref<Chapter | null>(null)
 const isDeletingChapter = ref(false)
 const deleteError = ref('')
@@ -1375,6 +1375,10 @@ watch(() => String(route.params.id || props.initialStory?.id || ''), async id =>
 }, { immediate: true })
 
 async function handleClose() {
+  if (route.query.from === 'admin') {
+    router.push('/admin')
+    return
+  }
   if (route.path.includes('/library/editor')) {
     router.push('/library/bookshelf')
   } else {

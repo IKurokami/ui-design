@@ -8,6 +8,7 @@ export function isAuthAdapterConfigured(): boolean { return adapter !== undefine
 
 export const authService: AuthAdapter = {
   async login(values, signal) { if (!adapter) throw new IntegrationUnavailableError(); return adapter.login(values, signal) },
+  async adminLogin(values, signal) { if (!adapter?.adminLogin) throw new IntegrationUnavailableError(); return adapter.adminLogin(values, signal) },
   async register(values, signal) { if (!adapter) throw new IntegrationUnavailableError(); return adapter.register(values, signal) },
   async requestPasswordReset(email, signal) { if (!adapter) throw new IntegrationUnavailableError(); return adapter.requestPasswordReset(email, signal) },
   async getMe(signal) { if (!adapter?.getMe) throw new IntegrationUnavailableError(); return adapter.getMe(signal) },

@@ -7,6 +7,7 @@ import {
   Bookmark,
   LogOut,
   PenTool,
+  BookImage,
 } from '@lucide/vue'
 import { useAuthStore } from '../../../stores/auth.store'
 import { createApiClient } from '../../../services/api-client'
@@ -23,6 +24,7 @@ const authStore = useAuthStore()
 const activeTab = ref<'home' | 'library' | 'reading'>('home')
 const isProfileActive = computed(() => route?.path === '/profile')
 const isEditorActive = computed(() => route?.path?.startsWith('/library/editor'))
+const isEbookActive = computed(() => route?.path?.startsWith('/library/ebook'))
 const isBookshelfActive = computed(() => route?.path === '/library/bookshelf' || route?.path === '/bookshelf')
 const isLibraryHomeActive = computed(() => route?.path === '/library' && !route?.query?.tab && !isEditorActive.value && !isProfileActive.value && !isBookshelfActive.value)
 const isReadingActive = computed(() => route?.path?.startsWith('/library/stories/') || (route?.path === '/library' && route?.query?.tab === 'reading'))
@@ -32,6 +34,7 @@ const activeNavKey = computed(() => {
   if (isBookshelfActive.value) return 'library'
   if (isReadingActive.value) return 'reading'
   if (isEditorActive.value) return 'editor'
+  if (isEbookActive.value) return 'ebook'
   return 'none'
 })
 
@@ -205,6 +208,10 @@ async function handleLogout() {
           />
         </span>
         <span v-if="!isEditorActive" class="nav-label">Đăng truyện</span>
+      </button>
+      <button type="button" class="nav-item nav-item-ebook" :class="{ active: isEbookActive }" title="Ebook của tôi" @click="router.push('/library/ebooks')">
+        <span class="nav-icon" :data-motion-key="isEbookActive ? 'sidebar:active-icon' : undefined"><BookImage :size="20" :stroke-width="1.6" /></span>
+        <span v-if="!isEbookActive" class="nav-label">Ebook</span>
       </button>
     </nav>
 

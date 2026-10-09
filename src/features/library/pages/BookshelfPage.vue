@@ -13,6 +13,7 @@ import {
   X,
   CheckCircle2,
   BookOpen,
+  BookImage,
 } from '@lucide/vue'
 import LibrarySidebar from '../components/LibrarySidebar.vue'
 import LibraryHeader from '../components/LibraryHeader.vue'
@@ -35,6 +36,11 @@ const waitForPageMotion = inject(pageMotionSettledKey, async () => {})
 
 // State
 const stories = ref<Story[]>(shelfState.stories ?? [])
+const hasMore = ref(true)
+const nextPage = ref(1)
+const loadingMore = ref(false)
+const loadSentinel = ref<HTMLElement>()
+let loadObserver: IntersectionObserver | undefined
 const isLoading = ref(!shelfState.stories)
 const loadError = ref('')
 const scrollArea = ref<HTMLElement>()
@@ -53,6 +59,7 @@ watch([stories, searchQuery, statusFilter, sortBy, viewMode], () => {
   Object.assign(shelfState, { stories: stories.value, searchQuery: searchQuery.value,
     statusFilter: statusFilter.value, sortBy: sortBy.value, viewMode: viewMode.value })
 }, { flush: 'sync' })
+watch(isLoading, value => { if (!value && loadSentinel.value && loadObserver) loadObserver.observe(loadSentinel.value) })
 
 // Modal xóa truyện
 const deleteModal = reactive({
@@ -84,7 +91,10 @@ async function fetchMyStories() {
   isLoading.value = !refreshing
   loadError.value = ''
   try {
-    const fetched = await client.request<Story[]>('/api/stories/mine')
+    nextPage.value = 1; hasMore.value = true
+    const response = await client.request<{items: Story[]; hasMore?: boolean; nextPage?: number} | Story[]>('/api/stories/mine?paginated=true&page=1&pageSize=24')
+    const fetched = Array.isArray(response) ? response : response.items
+    if (!Array.isArray(response)) { hasMore.value = Boolean(response.hasMore); nextPage.value = response.nextPage || 2 } else { hasMore.value = fetched.length >= 24; nextPage.value = 2 }
     if (refreshing) await waitForPageMotion(scrollArea.value)
     if (disposed) return
     stories.value = fetched
@@ -97,10 +107,16 @@ async function fetchMyStories() {
     isLoading.value = false
   }
 }
+async function loadMoreStories() {
+  if (!hasMore.value || loadingMore.value || isLoading.value) return
+  loadingMore.value = true
+  try { const page=nextPage.value; const response=await client.request<{items:Story[];hasMore?:boolean;nextPage?:number} | Story[]>(`/api/stories/mine?paginated=true&page=${page}&pageSize=24`); const incoming=Array.isArray(response)?response:response.items; const known=new Set(stories.value.map(story=>story.id)); stories.value=[...stories.value,...incoming.filter(story=>!known.has(story.id))]; hasMore.value=Array.isArray(response)?incoming.length===24:Boolean(response.hasMore); nextPage.value=Array.isArray(response)?page+1:(response.nextPage||page+1) } catch (error) { showToast(friendlyError(error),'error') } finally { loadingMore.value=false }
+}
 
 onMounted(() => {
   preloadEditor()
   fetchMyStories()
+  if (typeof IntersectionObserver !== 'undefined') { loadObserver = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) void loadMoreStories() }, { root: scrollArea.value ?? null, rootMargin: '500px' }); if (loadSentinel.value) loadObserver.observe(loadSentinel.value) }
 })
 
 const publishedStoriesCount = computed(() => {
@@ -182,6 +198,7 @@ let disposed = false
 onBeforeUnmount(() => {
   disposed = true
   if (toast.timer) clearTimeout(toast.timer)
+  loadObserver?.disconnect()
 })
 async function onStoryHover(event: Event) {
   preloadEditor()
@@ -270,6 +287,7 @@ async function confirmDeleteStory() {
         <div class="bookshelf-container">
           <header class="bookshelf-header">
             <LibraryHeader title="Tủ sách của tôi" :result-count="filteredStories.length" />
+            <button type="button" class="btn-ebook-library" @click="router.push('/library/ebooks')"><BookImage :size="16" />Ebook của tôi</button>
             <button type="button" class="btn-primary-action btn-create-story" @click="goToCreateStory" @pointerdown="preloadEditor">
               <Plus :size="16" aria-hidden="true" /> Đăng truyện
             </button>
@@ -329,6 +347,7 @@ async function confirmDeleteStory() {
               </tbody>
             </table>
           </div>
+          <div ref="loadSentinel" class="bookshelf-load-sentinel" aria-live="polite"><Loader2 v-if="loadingMore" :size="20" class="spin" /><span v-else-if="!hasMore">Đã hiển thị hết tác phẩm</span></div>
         </div>
       </div>
     </main>
@@ -354,6 +373,7 @@ async function confirmDeleteStory() {
 .bookshelf-container { width: 100%; max-width: 1400px; margin: 0 auto; }
 .bookshelf-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .bookshelf-header :deep(.library-header) { min-width: 0; }
+.btn-ebook-library { display: inline-flex; align-items: center; flex-shrink: 0; gap: 7px; margin-left: auto; padding: 11px 14px; border-radius: 12px; color: var(--library-accent); background: var(--control-surface); font-size: 12px; }
 .bookshelf-toolbar { display: flex; flex-direction: column; gap: 18px; margin-bottom: 30px; }
 .search-mode-row { display: flex; align-items: center; gap: 14px; }
 button, input { font: inherit; border: 0; box-shadow: none; }
@@ -402,6 +422,7 @@ button:focus-visible { outline: none; background: color-mix(in oklab, var(--libr
 .col-chapters { text-align: right; font-variant-numeric: tabular-nums; }
 .col-actions .card-actions { justify-content: flex-end; }
 .bookshelf-loading-wrap, .bookshelf-empty-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; min-height: 320px; text-align: center; color: var(--library-accent); }
+.bookshelf-load-sentinel { display:flex; justify-content:center; min-height:52px; padding-top:12px; color:var(--library-muted); font-size:11px; }
 .bookshelf-empty-card h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--library-ink); }
 .btn-reset-filters { padding: 10px 14px; border-radius: 10px; background: var(--control-surface); color: var(--library-accent); font-size: 12px; }
 .delete-modal-overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: #18241c40; backdrop-filter: blur(8px); }

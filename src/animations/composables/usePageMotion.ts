@@ -64,6 +64,9 @@ export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: 
     pending = undefined
     reset(element)
   }
+  function isAdminPage(element: Element) {
+    return element instanceof HTMLElement && element.dataset.page?.startsWith('admin')
+  }
   function enter(element: Element, done: () => void) {
     reset(element)
     let pageComplete!: () => void
@@ -84,7 +87,7 @@ export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: 
       if (entering.get(element) === entry) entering.delete(element)
     })
     const push = direction ? direction.value === 'push' : isInnerPage.value
-    gsap.set(element, { zIndex: push ? 2 : 1, transformOrigin: '50% 50%', willChange: 'transform', boxShadow: push ? '-24px 0 64px rgba(0,0,0,0.18)' : 'none' })
+    gsap.set(element, { zIndex: push ? 2 : 1, transformOrigin: '50% 50%', willChange: 'transform', boxShadow: isAdminPage(element) ? 'none' : push ? '-24px 0 64px rgba(0,0,0,0.18)' : 'none' })
     tweens.set(element, gsap.fromTo(element,
       { autoAlpha: 1, xPercent: push ? 100 : pageMotion.depthX, scale: push ? 1 : pageMotion.depthScale, borderRadius: push ? 0 : 20, pointerEvents: 'none' },
       { xPercent: 0, scale: 1, borderRadius: 0, duration: pageMotion.duration, ease: pageMotion.ease, onComplete: () => {
@@ -99,7 +102,7 @@ export function usePageMotion(brand: Ref<HTMLElement | undefined>, isInnerPage: 
     cancel(element)
     if (element instanceof HTMLElement) pending = captureMotion(element, { ghosts: true })
     const push = direction ? direction.value === 'push' : isInnerPage.value
-    gsap.set(element, { autoAlpha: 1, zIndex: push ? 1 : 2, pointerEvents: 'none', transformOrigin: '50% 50%', willChange: 'transform', boxShadow: push ? 'none' : '-24px 0 64px rgba(0,0,0,0.18)' })
+    gsap.set(element, { autoAlpha: 1, zIndex: push ? 1 : 2, pointerEvents: 'none', transformOrigin: '50% 50%', willChange: 'transform', boxShadow: isAdminPage(element) ? 'none' : push ? 'none' : '-24px 0 64px rgba(0,0,0,0.18)' })
     tweens.set(element, gsap.to(element, {
       xPercent: push ? pageMotion.depthX : 100,
       scale: push ? pageMotion.depthScale : 1,

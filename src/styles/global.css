@@ -144,3 +144,10 @@ h1:focus { outline:none; }
 .app-brand.app-brand-library { left:0; top:20px; width:76px; height:18px; justify-content:center; gap:5px; color:var(--sidebar-ink,#303b2f); }
 .app-brand-library .brand-name { font-size:19px; letter-spacing:-.6px; margin-top:-2px; }
 .app-brand.app-brand-library .brand-icon>svg { width:18px; height:18px; }
+.app-brand.app-brand-ebook { left:0; top:15px; width:100%; height:28px; justify-content:center; gap:7px; color:var(--green,#435a41); pointer-events:none; }
+.app-brand-ebook .brand-name { font-size:22px; letter-spacing:-.8px; margin-top:-2px; }
+.app-brand.app-brand-ebook .brand-icon>svg { width:21px; height:21px; }
+@media(prefers-reduced-motion: no-preference) {
+  .app-brand.app-brand-ebook { animation: ebook-logo-arrive .62s cubic-bezier(.22,.8,.25,1) both; }
+}
+@keyframes ebook-logo-arrive { from { opacity:0; } to { opacity:1; } }

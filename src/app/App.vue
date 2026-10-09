@@ -15,10 +15,12 @@ const router = useRouter()
 const route = useRoute()
 providePageScrollRestoration()
 const isAuth = computed(() => route.meta.layout === 'auth' || route.path === '/login' || route.path === '/register')
+const isAdmin = computed(() => route.meta.layout === 'admin')
 const isHome = computed(() => route.path === '/')
 const isDashboard = computed(() => route.meta.layout === 'dashboard' || route.path === '/library')
 const brand = ref<HTMLElement>()
-const brandLayout = computed(() => isDashboard.value ? 'library' : isHome.value ? 'home' : 'auth')
+const brandLayout = computed(() => route.name === 'ebook-editor' ? 'ebook' : isDashboard.value ? 'library' : isHome.value ? 'home' : 'auth')
+const pageKey = computed(() => isAuth.value ? 'auth' : route.name === 'ebook-editor' ? 'ebook-editor' : route.path)
 const pages = usePageMotion(brand, computed(() => !isHome.value), useRouteDirection(), brandLayout)
 const infoDialog = ref<InstanceType<typeof InfoDialog>>()
 const passwordReset = ref<InstanceType<typeof PasswordResetDialog>>()
@@ -27,15 +29,15 @@ provide(infoDialogKey, page => infoDialog.value?.open(page))
 provide(passwordResetDialogKey, source => passwordReset.value?.open(source))
 </script>
 <template>
-  <div class="page-stage" :class="{ 'page-stage-home': isHome, 'page-stage-dashboard': isDashboard }">
+  <div class="page-stage" :class="{ 'page-stage-home': isHome, 'page-stage-dashboard': isDashboard, 'page-stage-admin': isAdmin }">
   <div ref="pageContent" class="page-content">
-  <a ref="brand" href="/" class="app-brand brand" :class="{ 'app-brand-home': isHome, 'app-brand-library': isDashboard }" aria-label="Mộc — Trang chủ" @click.prevent="router.push('/')">
+  <a v-if="!isAdmin" ref="brand" href="/" class="app-brand brand" :class="{ 'app-brand-home': isHome, 'app-brand-library': isDashboard && route.name !== 'ebook-editor', 'app-brand-ebook': route.name === 'ebook-editor' }" aria-label="Mộc — Trang chủ" @click.prevent="router.push('/')">
     <span class="brand-icon"><BookOpen :size="27" :stroke-width="1.5" /></span><span class="brand-name">mộc<span>.</span></span>
   </a>
   <div class="page-viewport">
   <RouterView v-slot="{ Component }">
     <Transition :css="false" @enter="pages.enter" @leave="pages.leave" @enter-cancelled="pages.cancel" @leave-cancelled="pages.cancel">
-      <div :key="isAuth ? 'auth' : route.path" class="page-screen" :class="{ 'page-screen-home': isHome }" :data-page="isAuth ? 'auth' : isHome ? 'home' : String(route.name ?? route.path)">
+      <div :key="pageKey" class="page-screen" :class="{ 'page-screen-home': isHome }" :data-page="isAuth ? 'auth' : isHome ? 'home' : String(route.name ?? route.path)">
       <div v-if="isAuth" class="app-shell">
         <a href="#auth-content" class="skip-link">Đến biểu mẫu tài khoản</a>
         <header class="site-header"><span class="auth-brand-space" aria-hidden="true" /></header>
