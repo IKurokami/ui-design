@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { BookOpen } from '@lucide/vue'
+import { BookOpen, Heart } from '@lucide/vue'
 import type { CollectionDeck } from '../types'
 
 const props = defineProps<{
   deck: CollectionDeck
   preview?: boolean
   motionKey?: string
+  saved?: boolean
 }>()
 
 const emit = defineEmits<{
   click: [deck: CollectionDeck]
   hover: [deck: CollectionDeck, element: HTMLElement]
+  toggleSave: [id: string]
 }>()
 const root = ref<HTMLElement>()
 const failedCovers = ref<string[]>([])
@@ -54,6 +56,11 @@ function leave(source: 'pointer' | 'focus') {
     @focus="enter('focus')"
     @blur="leave('focus')"
   >
+    <button v-if="!preview" type="button" class="save-deck" :class="{ 'is-saved': saved }"
+      :aria-label="saved ? 'Bỏ lưu truyện' : 'Lưu truyện muốn đọc'" :aria-pressed="!!saved"
+      @click.stop="emit('toggleSave', deck.id)" @keydown.stop>
+      <Heart :size="17" :fill="saved ? 'currentColor' : 'none'" />
+    </button>
     <div class="deck-stack">
       <div v-if="!covers.length" class="cover-placeholder"><BookOpen :size="38" :stroke-width="1.2" aria-hidden="true" /></div>
       <!-- Back Card Left -->
@@ -103,7 +110,11 @@ function leave(source: 'pointer' | 'focus') {
 
 <style scoped>
 .cover-placeholder { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 16px; background: color-mix(in oklab, var(--library-accent) 6%, transparent); color: var(--library-accent); }
+.save-deck { position:absolute; z-index:6; right:10px; top:10px; width:34px; height:34px; display:grid; place-items:center; border:0; border-radius:50%; background:var(--library-surface); color:var(--library-muted); cursor:pointer; box-shadow:0 2px 10px #0001; }
+.save-deck.is-saved, .save-deck:hover { color:#ad465f; }
+.save-deck:focus-visible { outline:2px solid var(--library-accent); }
 .deck-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
