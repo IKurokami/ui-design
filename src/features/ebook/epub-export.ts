@@ -68,11 +68,11 @@ function textElement(el: EbookElement): string {
 }
 function mimeType(src: string, response: Response): string | null {
   const type = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase()
-  const known = ['image/png', 'image/jpeg', 'image/gif', 'image/svg+xml']
+  const known = ['image/png', 'image/jpeg', 'image/gif']
   if (type && known.includes(type)) return type
   const extension = new URL(src, window.location.href).pathname.split('.').at(-1)?.toLowerCase()
   return extension === 'png' ? 'image/png' : extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg'
-    : extension === 'gif' ? 'image/gif' : extension === 'svg' ? 'image/svg+xml' : null
+    : extension === 'gif' ? 'image/gif' : null
 }
 
 // EPUB is reflowable. Absolute canvas positions do not map to EPUB layout;
@@ -103,7 +103,7 @@ export async function buildEpub(draft: EbookDraft): Promise<Blob> {
     if (!mime) return ''
     const bytes = new Uint8Array(await response.arrayBuffer())
     if (bytes.length > 8 * 1024 * 1024) throw new Error('Ảnh vượt quá giới hạn 8 MB cho EPUB.')
-    const extension = mime === 'image/jpeg' ? 'jpg' : mime === 'image/svg+xml' ? 'svg' : mime.split('/')[1]
+    const extension = mime === 'image/jpeg' ? 'jpg' : mime.split('/')[1]
     const name = 'images/asset-' + ++imageIndex + '.' + extension
     imageCache.set(src, name)
     entries.push({ name: 'OEBPS/' + name, bytes })
