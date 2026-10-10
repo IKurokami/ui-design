@@ -2,11 +2,12 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMediaQuery } from '@vueuse/core'
-import { ArrowLeft, ArrowRight, List, Loader2, Maximize2, Minimize2, SlidersHorizontal, Heart, X } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, List, Loader2, Maximize2, Minimize2, SlidersHorizontal, Heart, Bell, X } from '@lucide/vue'
 import { readerHTML, readableHTML } from '../reader-content'
 import LibrarySidebar from '../components/LibrarySidebar.vue'
 import ReaderChapters from '../components/ReaderChapters.vue'
 import ReaderSettings from '../components/ReaderSettings.vue'
+import StoryDiscussion from '../components/StoryDiscussion.vue'
 import { loadReadingSettings, normalizeReadingSettings, readingDefaults, readingFonts, saveReadingSettings, type ReadingSettings } from '../reading-settings'
 import { createApiClient } from '../../../services/api-client'
 import { friendlyError } from '../../../services/error-handler'
@@ -20,6 +21,25 @@ const loading = ref(true)
 const loadError = ref('')
 const progressError = ref('')
 const isSaved = ref(false)
+const isFollowing = ref(false)
+const followBusy = ref(false)
+const followError = ref('')
+async function loadFollowed() {
+  try {
+    const result = await client.request<{ ids: string[] }>('/api/follows/ids')
+    if (!disposed) isFollowing.value = result.ids.includes(String(route.params.id))
+  } catch { /* Reading remains available even if subscription API is offline. */ }
+}
+async function toggleFollow() {
+  if (!story.value || followBusy.value) return
+  followBusy.value = true
+  followError.value = ''
+  try {
+    await client.request('/api/follows/' + encodeURIComponent(story.value.id), { method: isFollowing.value ? 'DELETE' : 'POST' })
+    isFollowing.value = !isFollowing.value
+  } catch (error) { followError.value = friendlyError(error) }
+  finally { followBusy.value = false }
+}
 const saveBusy = ref(false)
 const saveError = ref('')
 async function fetchSaved() {
@@ -104,6 +124,7 @@ async function loadStory() {
   if (detail.status === 'rejected') { loadError.value = friendlyError(detail.reason); return }
   story.value = detail.value
   void fetchSaved()
+  void loadFollowed()
   if (progress.status === 'rejected') progressError.value = 'Không tải được chương đọc gần nhất. ' + friendlyError(progress.reason)
   else canSaveProgress = true
   const requested = typeof route.query.chapter === 'string' ? route.query.chapter : ''
@@ -191,6 +212,9 @@ function retryProgress() {
           <p v-if="story?.authorName" class="story-author">{{ story.authorName }}</p>
         </div>
         <div v-if="story" class="toolbar-actions">
+          <button type="button" :disabled="followBusy" :aria-pressed="isFollowing" @click="toggleFollow">
+            <Bell :size="16" :fill="isFollowing ? 'currentColor' : 'none'" />{{ isFollowing ? 'Đang theo dõi' : 'Theo dõi' }}
+          </button>
           <button type="button" :disabled="saveBusy" :aria-pressed="isSaved" @click="toggleSaved">
             <Heart :size="16" :fill="isSaved ? 'currentColor' : 'none'" />{{ isSaved ? 'Đã lưu' : 'Lưu truyện' }}
           </button>
@@ -209,6 +233,7 @@ function retryProgress() {
       <div v-else-if="story" class="reader-workspace" :class="{ 'is-focused': focused }">
         <div ref="scrollArea" class="reading-scroll">
           <article class="reading-article">
+            <div v-if="followError" class="progress-error" role="alert">{{ followError }}</div>
             <div v-if="saveError" class="progress-error" role="alert">{{ saveError }}</div>
             <div v-if="progressError" class="progress-error" role="alert"><p>{{ progressError }}</p><button type="button" @click="retryProgress">Thử lại</button></div>
             <details v-if="story.description" class="story-description"><summary>Thông tin truyện<span v-if="story.category">{{ story.category }}</span></summary><p>{{ story.description }}</p></details>
@@ -223,6 +248,7 @@ function retryProgress() {
               </nav>
             </template>
             <p v-else class="reader-empty">Truyện chưa có chương.</p>
+            <StoryDiscussion v-if="story" :story-id="story.id" />
           </article>
         </div>
 

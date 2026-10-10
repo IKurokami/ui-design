@@ -6,6 +6,7 @@ import {
   BookOpen,
   Bookmark,
   Heart,
+  Bell,
   LogOut,
   PenTool,
   BookImage,
@@ -30,12 +31,14 @@ const isBookshelfActive = computed(() => route?.path === '/library/bookshelf' ||
 const isLibraryHomeActive = computed(() => route?.path === '/library' && !route?.query?.tab && !isEditorActive.value && !isProfileActive.value && !isBookshelfActive.value)
 const isReadingActive = computed(() => route?.path?.startsWith('/library/stories/') || (route?.path === '/library' && route?.query?.tab === 'reading'))
 const isSavedActive = computed(() => route?.path === '/library' && route?.query?.tab === 'saved')
+const isNotificationsActive = computed(() => route?.path === '/library/notifications')
 const sidebarNav = ref<HTMLElement>()
 const activeNavKey = computed(() => {
   if (isLibraryHomeActive.value) return 'home'
   if (isBookshelfActive.value) return 'library'
   if (isReadingActive.value) return 'reading'
   if (isSavedActive.value) return 'saved'
+  if (isNotificationsActive.value) return 'notifications'
   if (isEditorActive.value) return 'editor'
   if (isEbookActive.value) return 'ebook'
   return 'none'
@@ -115,6 +118,9 @@ function handleNav(tab: 'home' | 'library' | 'reading') {
 
 function goToSaved() {
   if (!isSavedActive.value) router.push({ path: '/library', query: { tab: 'saved' } })
+}
+function goToNotifications() {
+  if (!isNotificationsActive.value) router.push('/library/notifications')
 }
 function goToProfile() {
   if (route.path !== '/profile') {
@@ -204,6 +210,12 @@ async function handleLogout() {
           <Heart :size="20" :stroke-width="1.6" :fill="isSavedActive ? 'currentColor' : 'none'" />
         </span>
         <span v-if="!isSavedActive" class="nav-label">Đã lưu</span>
+      </button>
+      <button type="button" class="nav-item" :class="{ active: isNotificationsActive }" title="Thông báo" @click="goToNotifications">
+        <span class="nav-icon" :data-motion-key="isNotificationsActive ? 'sidebar:active-icon' : undefined">
+          <Bell :size="20" :stroke-width="1.6" :fill="isNotificationsActive ? 'currentColor' : 'none'" />
+        </span>
+        <span v-if="!isNotificationsActive" class="nav-label">Thông báo</span>
       </button>
       <!-- 4. Đăng truyện / Soạn thảo -->
       <button
