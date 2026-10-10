@@ -8,11 +8,13 @@ import { useAutoMotion } from '../../../animations/composables/useAutoMotion'
 const props = defineProps<{
   decks: CollectionDeck[]
   viewMode?: ViewMode
+  savedIds?: string[]
 }>()
 
 const emit = defineEmits<{
   select: [deck: CollectionDeck]
   hover: [deck: CollectionDeck, element: HTMLElement]
+  toggleSave: [id: string]
 }>()
 
 // Filter/search/sort: kept items FLIP, removed ones exit, new ones enter.
