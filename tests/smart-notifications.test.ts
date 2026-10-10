@@ -72,12 +72,12 @@ afterEach(() => {
 })
 
 function button(label: string) {
-  const found = Array.from(document.querySelectorAll('button')).find(el => el.getAttribute('aria-label') === label)
+  const found = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(el => el.getAttribute('aria-label') === label)
   if (!found) throw Error('Missing button: ' + label)
   return found
 }
 function labeledText(text: string) {
-  const found = Array.from(document.querySelectorAll('.popover-tabs button')).find(el => el.textContent?.includes(text))
+  const found = Array.from(document.querySelectorAll<HTMLButtonElement>('.popover-tabs button')).find(el => el.textContent?.includes(text))
   if (!found) throw Error('Missing tab: ' + text)
   return found
 }
@@ -154,7 +154,7 @@ describe('sidebar notification popover', () => {
     await setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     button('Đóng thông báo') // close control is available
-    const clear = Array.from(document.querySelectorAll('.list-caption button')).find(el => el.textContent?.includes('Xóa tất cả'))
+    const clear = Array.from(document.querySelectorAll<HTMLButtonElement>('.list-caption button')).find(el => el.textContent?.includes('Xóa tất cả'))
     expect(clear).toBeDefined()
     clear?.click()
     await flushPromises()
