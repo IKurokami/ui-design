@@ -201,6 +201,8 @@ describe('sidebar notification popover', () => {
     const wrapper = mount(LibrarySidebar, { attachTo: document.body, global: { plugins: [router, pinia] } })
     mounted.push(wrapper)
     await flushPromises()
+    await wrapper.get('button[aria-label="Thông báo"]').trigger('pointerenter')
+    await flushPromises()
     expect(wrapper.find('.notification-badge').text()).toBe('1')
     await wrapper.get('button[aria-label="Thông báo"]').trigger('click')
     await flushPromises()
