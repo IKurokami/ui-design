@@ -27,11 +27,11 @@ export const router = createRouter({
       component: () => import('../../features/library/pages/StoryDetailPage.vue'),
       meta: { title: 'Đọc truyện', layout: 'dashboard', requiresAuth: true },
     },
+    // Older bookmarks now open the compact sidebar popover, not a separate page.
     {
       path: '/library/notifications',
-      name: 'notifications',
-      component: () => import('../../features/library/pages/NotificationsPage.vue'),
-      meta: { title: 'Thông báo', layout: 'dashboard', requiresAuth: true },
+      redirect: { path: '/library', query: { notifications: '1' } },
+      meta: { requiresAuth: true },
     },
     { path: '/bookshelf', redirect: '/library/bookshelf' },
     {
