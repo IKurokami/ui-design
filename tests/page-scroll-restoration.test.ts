@@ -102,7 +102,7 @@ describe('Dashboard page scroll', () => {
     ] }
     request.mockImplementation((path: string, options: RequestInit) => {
       if (options.method === 'PUT') { recent = JSON.parse(String(options.body)).chapterId; return Promise.resolve(new Response(null, { status: 204 })) }
-      return Promise.resolve(json(path.endsWith('reading-progress') ? { chapterId: recent } : path === '/api/stories' ? libraryStories : story))
+      return Promise.resolve(json(path.endsWith('reading-progress') ? { chapterId: recent } : path.startsWith('/api/stories?') ? libraryStories : story))
     })
     const { router, wrapper } = await pages('/library/stories/story')
     scroll(wrapper.get('.reading-scroll').element, 480)
