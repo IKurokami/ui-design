@@ -1,115 +1,213 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import NotificationsPage from '../src/features/library/pages/NotificationsPage.vue'
+import { createPinia } from 'pinia'
+import NotificationsPopover from '../src/features/library/components/NotificationsPopover.vue'
+import LibrarySidebar from '../src/features/library/components/LibrarySidebar.vue'
+import { useAuthStore } from '../src/stores/auth.store'
 
 const request = vi.fn()
 vi.mock('../src/services/api-client', () => ({
   createApiClient: () => ({ request: (...args: unknown[]) => request(...args) }),
 }))
-vi.mock('../src/features/library/components/LibrarySidebar.vue', () => ({
-  default: { template: '<aside>Thư viện</aside>' },
-}))
 
-let inbox: { chapterId: string; storyId: string; storyTitle: string; chapterTitle: string; read: boolean; createdAt: string }[]
-let muted: { storyId: string; storyTitle: string }[]
+interface InboxItem {
+  storyId: string
+  storyTitle: string
+  chapterId: string
+  chapterTitle: string
+  createdAt: string
+  read: boolean
+}
+interface MutedItem { storyId: string; storyTitle: string }
+const mounted: { unmount: () => void }[] = []
+let inbox: InboxItem[]
+let blocked: MutedItem[]
+
 beforeEach(() => {
-  inbox = [{
-    chapterId: 'new-chapter', storyId: 'auto-story', storyTitle: 'Truyện đang đọc',
-    chapterTitle: 'Chương mới nhất', read: false, createdAt: new Date().toISOString(),
-  }]
-  muted = []
+  inbox = [
+    { storyId: 'story-one', chapterId: 'new-one', storyTitle: 'Truyện đang đọc',
+      chapterTitle: 'Chương mới nhất', createdAt: new Date().toISOString(), read: false },
+    { storyId: 'story-two', chapterId: 'older-two', storyTitle: 'Truyện khác',
+      chapterTitle: 'Chương đã đọc', createdAt: new Date().toISOString(), read: true },
+  ]
+  blocked = []
+  vi.stubGlobal('matchMedia', () => ({
+    matches: true, addEventListener() {}, removeEventListener() {},
+  }))
   request.mockReset()
   request.mockImplementation(async (path: string, options?: RequestInit) => {
-    if (path === '/api/notifications/muted/stories') return { items: [...muted] }
+    if (path === '/api/profile/me') return {}
+    if (path === '/api/notifications/muted/stories') return { items: [...blocked] }
     if (path === '/api/notifications' && options?.method === 'DELETE') { inbox = []; return undefined }
     if (path === '/api/notifications') return { items: [...inbox] }
-    if (path === '/api/notifications/mute/auto-story' && options?.method === 'POST') {
-      muted = [{ storyId: 'auto-story', storyTitle: 'Truyện đang đọc' }]
-      inbox = inbox.filter(entry => entry.storyId !== 'auto-story')
+    if (path.startsWith('/api/notifications/mute/') && options?.method === 'POST') {
+      const storyId = decodeURIComponent(path.split('/').pop() ?? '')
+      const story = inbox.find(item => item.storyId === storyId)
+      if (story) blocked.push({ storyId, storyTitle: story.storyTitle })
+      inbox = inbox.filter(item => item.storyId !== storyId)
       return undefined
     }
-    if (path === '/api/notifications/mute/auto-story' && options?.method === 'DELETE') {
-      muted = []; return undefined
+    if (path.startsWith('/api/notifications/mute/') && options?.method === 'DELETE') {
+      blocked = blocked.filter(item => item.storyId !== path.split('/').pop())
+      return undefined
     }
-    if (path === '/api/notifications/new-chapter/read' && options?.method === 'PUT') return undefined
-    if (path === '/api/notifications/new-chapter' && options?.method === 'DELETE') {
-      inbox = []; return undefined
+    if (path.endsWith('/read') && options?.method === 'PUT') {
+      const id = path.split('/')[3]
+      inbox = inbox.map(item => item.chapterId === id ? { ...item, read: true } : item)
+      return undefined
     }
-    throw Error('Unexpected request ' + path)
+    if (path.startsWith('/api/notifications/') && options?.method === 'DELETE') {
+      inbox = inbox.filter(item => item.chapterId !== path.split('/').pop())
+      return undefined
+    }
+    throw Error('Unexpected API request ' + path)
   })
 })
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  mounted.splice(0).forEach(wrapper => wrapper.unmount())
+  document.body.innerHTML = ''
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
+function button(label: string) {
+  const found = Array.from(document.querySelectorAll('button')).find(el => el.getAttribute('aria-label') === label)
+  if (!found) throw Error('Missing button: ' + label)
+  return found
+}
+function labeledText(text: string) {
+  const found = Array.from(document.querySelectorAll('.popover-tabs button')).find(el => el.textContent?.includes(text))
+  if (!found) throw Error('Missing tab: ' + text)
+  return found
+}
 async function setup() {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/library/notifications', component: NotificationsPage },
+      { path: '/library', component: { template: '<div />' } },
       { path: '/library/stories/:id', component: { template: '<div />' } },
     ],
   })
-  await router.push('/library/notifications')
+  await router.push('/library')
   await router.isReady()
-  const wrapper = mount(NotificationsPage, { global: { plugins: [router] } })
+  const wrapper = mount(NotificationsPopover, { attachTo: document.body, global: { plugins: [router] } })
+  mounted.push(wrapper)
   await flushPromises()
   return { wrapper, router }
 }
 
-describe('manual notification management', () => {
-  it('shows smart notifications even without following a story', async () => {
-    const { wrapper } = await setup()
-    expect(wrapper.text()).toContain('đang đọc gần đây')
-    expect(wrapper.text()).toContain('Chương mới nhất')
-    expect(wrapper.text()).toContain('Truyện đang đọc')
-    expect(request).toHaveBeenCalledWith('/api/notifications')
-  })
-  it('cancels all alerts from a chosen story and allows the reader to re-enable it', async () => {
-    const { wrapper } = await setup()
-    await wrapper.get('button[aria-label="Hủy nhận thông báo từ truyện Truyện đang đọc"]').trigger('click')
+describe('sidebar notification popover', () => {
+  it('renders a compact dialog, unread count and filters without opening another page', async () => {
+    const { router } = await setup()
+    expect(document.querySelector('.notification-popover')?.getAttribute('role')).toBe('dialog')
+    expect(document.querySelector('.unread-pill')?.textContent).toBe('1')
+    expect(document.querySelector('.notification-items')?.textContent).toContain('Truyện đang đọc')
+    expect(document.querySelector('.notification-items')?.textContent).toContain('Truyện khác')
+    labeledText('Chưa đọc').click()
     await flushPromises()
-    expect(request).toHaveBeenCalledWith('/api/notifications/mute/auto-story', { method: 'POST' })
-    expect(wrapper.find('.notification').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Truyện đã hủy nhận thông báo')
-    expect(wrapper.text()).toContain('Các chương mới cũng sẽ không gửi thông báo')
-    await wrapper.get('button[aria-label="Bật lại thông báo truyện Truyện đang đọc"]').trigger('click')
-    await flushPromises()
-    expect(request).toHaveBeenCalledWith('/api/notifications/mute/auto-story', { method: 'DELETE' })
-    expect(wrapper.find('.muted-list').exists()).toBe(false)
+    expect(document.querySelectorAll('.notification-items li').length).toBe(1)
+    expect(router.currentRoute.value.path).toBe('/library')
   })
-  it('lets a reader dismiss one message without cancelling future notifications', async () => {
-    const { wrapper } = await setup()
-    await wrapper.get('button[aria-label="Xóa thông báo Chương mới nhất của truyện Truyện đang đọc"]').trigger('click')
-    await flushPromises()
-    expect(request).toHaveBeenCalledWith('/api/notifications/new-chapter', { method: 'DELETE' })
-    expect(request).not.toHaveBeenCalledWith('/api/notifications/mute/auto-story', expect.anything())
-    expect(wrapper.text()).toContain('Các chương mới vẫn có thể được gửi')
-    expect(wrapper.find('.notification').exists()).toBe(false)
-  })
-  it('clears the inbox after user confirmation without disabling notifications', async () => {
-    const { wrapper } = await setup()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    await wrapper.get('button').trigger('mouseenter')
-    await wrapper.get('.inbox-actions button').trigger('click')
-    await flushPromises()
-    expect(confirm).toHaveBeenCalledOnce()
-    expect(request).toHaveBeenCalledWith('/api/notifications', { method: 'DELETE' })
-    expect(request).not.toHaveBeenCalledWith('/api/notifications/mute/auto-story', expect.anything())
-    expect(wrapper.find('.notification').exists()).toBe(false)
-  })
-  it('opens a chapter and marks it read', async () => {
+
+  it('marks a notification read and goes directly to the corresponding chapter', async () => {
     const { wrapper, router } = await setup()
-    await wrapper.get('.notification').trigger('click')
+    button('Đọc Chương mới nhất của Truyện đang đọc').click()
     await flushPromises()
-    expect(request).toHaveBeenCalledWith('/api/notifications/new-chapter/read', { method: 'PUT' })
-    expect(router.currentRoute.value.path).toBe('/library/stories/auto-story')
-    expect(router.currentRoute.value.query.chapter).toBe('new-chapter')
+    expect(request).toHaveBeenCalledWith('/api/notifications/new-one/read', { method: 'PUT' })
+    expect(wrapper.emitted('close')?.length).toBe(1)
+    expect(wrapper.emitted('unreadChange')?.at(-1)).toEqual([0])
+    expect(router.currentRoute.value.path).toBe('/library/stories/story-one')
+    expect(router.currentRoute.value.query.chapter).toBe('new-one')
   })
-  it('preserves cancelled stories across inbox reloads', async () => {
-    muted = [{ storyId: 'auto-story', storyTitle: 'Truyện đang đọc' }]
-    inbox = []
+
+  it('lets readers block a selected story and later enable it again', async () => {
+    await setup()
+    button('Tùy chọn thông báo Chương mới nhất').click()
+    await flushPromises()
+    button('Hủy nhận thông báo từ truyện Truyện đang đọc').click()
+    await flushPromises()
+    expect(request).toHaveBeenCalledWith('/api/notifications/mute/story-one', { method: 'POST' })
+    expect(document.querySelector('.notification-items')?.textContent).not.toContain('Truyện đang đọc')
+    labeledText('Đã chặn').click()
+    await flushPromises()
+    expect(document.querySelector('.muted-stories')?.textContent).toContain('Truyện đang đọc')
+    button('Bật lại thông báo truyện Truyện đang đọc').click()
+    await flushPromises()
+    expect(request).toHaveBeenCalledWith('/api/notifications/mute/story-one', { method: 'DELETE' })
+    expect(document.querySelector('.muted-stories')).toBeNull()
+  })
+
+  it('deletes one message separately from stopping future messages', async () => {
+    await setup()
+    button('Tùy chọn thông báo Chương mới nhất').click()
+    await flushPromises()
+    button('Xóa thông báo Chương mới nhất').click()
+    await flushPromises()
+    expect(request).toHaveBeenCalledWith('/api/notifications/new-one', { method: 'DELETE' })
+    expect(document.querySelector('.notification-items')?.textContent).toContain('Truyện khác')
+    expect(document.querySelector('.notification-items')?.textContent).not.toContain('Truyện đang đọc')
+    expect(request).not.toHaveBeenCalledWith('/api/notifications/mute/story-one', expect.anything())
+  })
+
+  it('requires confirmation before clearing all inbox messages', async () => {
+    await setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    button('Đóng thông báo') // close control is available
+    const clear = Array.from(document.querySelectorAll('.list-caption button')).find(el => el.textContent?.includes('Xóa tất cả'))
+    expect(clear).toBeDefined()
+    clear?.click()
+    await flushPromises()
+    expect(request).not.toHaveBeenCalledWith('/api/notifications', { method: 'DELETE' })
+    confirm.mockReturnValue(true)
+    clear?.click()
+    await flushPromises()
+    expect(request).toHaveBeenCalledWith('/api/notifications', { method: 'DELETE' })
+    expect(document.querySelector('.notification-items')).toBeNull()
+  })
+
+  it('closes when clicking outside or pressing Escape', async () => {
     const { wrapper } = await setup()
-    expect(wrapper.text()).toContain('Truyện đã hủy nhận thông báo')
-    expect(wrapper.find('button[aria-label="Bật lại thông báo truyện Truyện đang đọc"]').exists()).toBe(true)
+    document.querySelector<HTMLElement>('.notification-outside')?.click()
+    expect(wrapper.emitted('close')?.length).toBe(1)
+    document.querySelector<HTMLElement>('.notification-popover')?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    )
+    await flushPromises()
+    expect(wrapper.emitted('close')?.length).toBe(2)
+  })
+
+  it('shows previously blocked stories even with an empty inbox', async () => {
+    blocked = [{ storyId: 'story-one', storyTitle: 'Truyện đang đọc' }]
+    inbox = []
+    await setup()
+    labeledText('Đã chặn').click()
+    await flushPromises()
+    expect(document.querySelector('.muted-stories')?.textContent).toContain('Truyện đang đọc')
+    button('Bật lại thông báo truyện Truyện đang đọc').click()
+    await flushPromises()
+    expect(request).toHaveBeenCalledWith('/api/notifications/mute/story-one', { method: 'DELETE' })
+  })
+
+  it('opens from the sidebar bell with an unread badge instead of navigating', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/library', component: { template: '<div />' } }],
+    })
+    await router.push('/library')
+    await router.isReady()
+    const pinia = createPinia()
+    useAuthStore(pinia).setSession({ user: { id: 'reader', displayName: 'Reader', email: 'reader@example.com' } })
+    const wrapper = mount(LibrarySidebar, { attachTo: document.body, global: { plugins: [router, pinia] } })
+    mounted.push(wrapper)
+    await flushPromises()
+    expect(wrapper.find('.notification-badge').text()).toBe('1')
+    await wrapper.get('button[aria-label="Thông báo"]').trigger('click')
+    await flushPromises()
+    expect(document.querySelector('.notification-popover')).not.toBeNull()
+    expect(router.currentRoute.value.path).toBe('/library')
+    document.querySelector<HTMLElement>('.notification-outside')?.click()
+    await flushPromises()
+    expect(document.querySelector('.notification-popover')).toBeNull()
   })
 })
