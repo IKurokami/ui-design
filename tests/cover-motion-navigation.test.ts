@@ -19,7 +19,7 @@ describe('cover shared motion between bookshelf and editor', () => {
   beforeEach(() => {
     vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener() {}, removeEventListener() {} }))
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      const data = url.endsWith('/api/stories/mine') ? [story] : story
+      const data = url.startsWith('/api/stories/mine?') ? [story] : story
       return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }))
   })
