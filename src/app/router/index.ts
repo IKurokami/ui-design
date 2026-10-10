@@ -62,6 +62,7 @@ export const router = createRouter({
     { path: '/login', name: 'login', component: LoginPage, meta: { title: 'Đăng nhập', layout: 'auth' } },
     { path: '/admin/login', name: 'admin-login', component: () => import('../../features/admin/pages/AdminLoginPage.vue'), meta: { title: 'Đăng nhập quản trị', layout: 'admin', adminArea: true } },
     { path: '/admin', name: 'admin', component: () => import('../../features/admin/pages/AdminPage.vue'), meta: { title: 'Quản trị', layout: 'admin', adminArea: true } },
+    { path: '/admin/comments', name: 'admin-comments', component: () => import('../../features/admin/pages/AdminCommentsPage.vue'), meta: { title: 'Duyệt bình luận', layout: 'admin', adminArea: true } },
     { path: '/admin/users', name: 'admin-users', component: () => import('../../features/admin/pages/AdminPage.vue'), meta: { title: 'Người dùng', layout: 'admin', adminArea: true, adminOnly: true } },
     { path: '/register', name: 'register', component: RegisterPage, meta: { title: 'Tạo tài khoản', layout: 'auth' } },
     { path: '/auth/reset-password', name: 'reset-password', component: ResetPasswordPage, meta: { title: 'Đặt lại mật khẩu', layout: 'auth' } },
