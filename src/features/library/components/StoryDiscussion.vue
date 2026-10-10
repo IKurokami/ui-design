@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from 'vue'
 import { MessageCircle, Send, Trash2 } from '@lucide/vue'
 import { createApiClient } from '../../../services/api-client'
 import { friendlyError } from '../../../services/error-handler'
+import { getActivePinia } from 'pinia'
 import { useAuthStore } from '../../../stores/auth.store'
 
 interface Comment {
@@ -11,7 +12,7 @@ interface Comment {
 }
 const props = defineProps<{ storyId: string }>()
 const api = createApiClient()
-const auth = useAuthStore()
+const auth = getActivePinia() ? useAuthStore() : null
 const entries = ref<Comment[]>([])
 const input = ref('')
 const busy = ref(false)
@@ -75,7 +76,7 @@ async function remove(id: string) {
       <li v-for="entry in entries" :key="entry.id">
         <div class="comment-header"><strong>{{ entry.authorName }}</strong>
           <span v-if="entry.status === 'pending'" class="pending">Chờ duyệt</span>
-          <button v-if="entry.userId === auth.user?.id" type="button" :disabled="busy" :aria-label="'Xóa bình luận của '+entry.authorName" @click="remove(entry.id)"><Trash2 :size="14" /></button>
+          <button v-if="entry.userId === auth?.user?.id" type="button" :disabled="busy" :aria-label="'Xóa bình luận của '+entry.authorName" @click="remove(entry.id)"><Trash2 :size="14" /></button>
         </div>
         <p>{{ entry.body }}</p>
       </li>
