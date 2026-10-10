@@ -9,7 +9,7 @@ const request = vi.fn()
 enableAutoUnmount(afterEach)
 beforeEach(() => {
   request.mockReset()
-  vi.stubGlobal('fetch', request)
+  vi.stubGlobal('fetch', (path: string, options?: RequestInit) => path === '/api/favorites/ids' ? Promise.resolve(response({ ids: [] })) : request(path, options))
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
 })
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
