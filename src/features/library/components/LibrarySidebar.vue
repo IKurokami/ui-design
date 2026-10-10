@@ -5,6 +5,7 @@ import {
   Home,
   BookOpen,
   Bookmark,
+  Heart,
   LogOut,
   PenTool,
   BookImage,
@@ -28,11 +29,13 @@ const isEbookActive = computed(() => route?.path?.startsWith('/library/ebook'))
 const isBookshelfActive = computed(() => route?.path === '/library/bookshelf' || route?.path === '/bookshelf')
 const isLibraryHomeActive = computed(() => route?.path === '/library' && !route?.query?.tab && !isEditorActive.value && !isProfileActive.value && !isBookshelfActive.value)
 const isReadingActive = computed(() => route?.path?.startsWith('/library/stories/') || (route?.path === '/library' && route?.query?.tab === 'reading'))
+const isSavedActive = computed(() => route?.path === '/library' && route?.query?.tab === 'saved')
 const sidebarNav = ref<HTMLElement>()
 const activeNavKey = computed(() => {
   if (isLibraryHomeActive.value) return 'home'
   if (isBookshelfActive.value) return 'library'
   if (isReadingActive.value) return 'reading'
+  if (isSavedActive.value) return 'saved'
   if (isEditorActive.value) return 'editor'
   if (isEbookActive.value) return 'ebook'
   return 'none'
@@ -110,6 +113,9 @@ function handleNav(tab: 'home' | 'library' | 'reading') {
   }
 }
 
+function goToSaved() {
+  if (!isSavedActive.value) router.push({ path: '/library', query: { tab: 'saved' } })
+}
 function goToProfile() {
   if (route.path !== '/profile') {
     router.push('/profile')
@@ -192,6 +198,13 @@ async function handleLogout() {
         <span v-if="!isReadingActive" class="nav-label">Đang đọc</span>
       </button>
 
+      <!-- Danh sách truyện muốn đọc, tách biệt với lịch sử đọc. -->
+      <button type="button" class="nav-item" :class="{ active: isSavedActive }" title="Đã lưu" @click="goToSaved">
+        <span class="nav-icon" :data-motion-key="isSavedActive ? 'sidebar:active-icon' : undefined">
+          <Heart :size="20" :stroke-width="1.6" :fill="isSavedActive ? 'currentColor' : 'none'" />
+        </span>
+        <span v-if="!isSavedActive" class="nav-label">Đã lưu</span>
+      </button>
       <!-- 4. Đăng truyện / Soạn thảo -->
       <button
         type="button"
