@@ -105,7 +105,7 @@ describe('BookshelfPage - Tủ sách của tôi (Tác phẩm đã đăng)', () =
     const wrapper = mount(BookshelfPage)
 
     // Verify loading or initial render
-    expect(mockRequest).toHaveBeenCalledWith('/api/stories/mine')
+    expect(mockRequest).toHaveBeenCalledWith('/api/stories/mine?paginated=true&page=1&pageSize=24')
 
     // Wait for promise resolution
     await vi.waitFor(() => {
