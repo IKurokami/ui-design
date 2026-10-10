@@ -110,6 +110,6 @@ describe('manual notification management', () => {
     inbox = []
     const { wrapper } = await setup()
     expect(wrapper.text()).toContain('Truyện đã hủy nhận thông báo')
-    expect(wrapper.get('button[aria-label="Bật lại thông báo truyện Truyện đang đọc"]').exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="Bật lại thông báo truyện Truyện đang đọc"]').exists()).toBe(true)
   })
 })
