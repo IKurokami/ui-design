@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { BookOpen, Users, LogOut, Pencil, Trash2, UserRound, RefreshCw, Search, ChevronLeft, ChevronRight } from '@lucide/vue'
+import { BookOpen, Users, MessageSquare, LogOut, Pencil, Trash2, UserRound, RefreshCw, Search, ChevronLeft, ChevronRight } from '@lucide/vue'
 import { useAuthStore } from '../../../stores/auth.store'
 import { createApiClient } from '../../../services/api-client'
 import { friendlyError } from '../../../services/error-handler'
@@ -49,6 +49,7 @@ function date(value?:string){return value?new Intl.DateTimeFormat('vi-VN',{dateS
       <div class="admin-sidebar-top"><span class="admin-sidebar-kicker">MOC</span><span class="admin-sidebar-title">Quản trị</span></div>
       <nav class="admin-nav">
         <button type="button" :class="{active:section==='stories'}" @click="router.push('/admin')"><BookOpen :size="18"/><span>Truyện</span></button>
+        <button type="button" @click="router.push('/admin/comments')"><MessageSquare :size="18"/><span>Bình luận</span></button>
         <button v-if="authStore.user?.role==='admin'" type="button" :class="{active:section==='users'}" @click="router.push('/admin/users')"><Users :size="18"/><span>Người dùng</span></button>
       </nav>
       <div class="admin-sidebar-account"><div class="admin-user"><UserRound :size="17"/><span><strong>{{ authStore.user?.displayName }}</strong><small>{{ roleName(authStore.user?.role) }}</small></span></div><button class="admin-logout" type="button" @click="logout"><LogOut :size="17"/><span>Đăng xuất</span></button></div>
