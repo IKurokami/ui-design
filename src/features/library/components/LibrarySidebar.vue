@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   Home,
@@ -14,6 +14,7 @@ import {
 import { useAuthStore } from '../../../stores/auth.store'
 import { createApiClient } from '../../../services/api-client'
 import UserAvatar from '../../../components/ui/UserAvatar.vue'
+import NotificationsPopover from './NotificationsPopover.vue'
 import { useAutoMotion } from '../../../animations/composables/useAutoMotion'
 
 const props = defineProps<{ beforeLogout?: () => Promise<boolean> }>()
@@ -31,7 +32,10 @@ const isBookshelfActive = computed(() => route?.path === '/library/bookshelf' ||
 const isLibraryHomeActive = computed(() => route?.path === '/library' && !route?.query?.tab && !isEditorActive.value && !isProfileActive.value && !isBookshelfActive.value)
 const isReadingActive = computed(() => route?.path?.startsWith('/library/stories/') || (route?.path === '/library' && route?.query?.tab === 'reading'))
 const isSavedActive = computed(() => route?.path === '/library' && route?.query?.tab === 'saved')
-const isNotificationsActive = computed(() => route?.path === '/library/notifications')
+const notificationsOpen = ref(false)
+const notificationButton = ref<HTMLElement | null>(null)
+const unreadCount = ref(0)
+const isNotificationsActive = computed(() => notificationsOpen.value)
 const sidebarNav = ref<HTMLElement>()
 const activeNavKey = computed(() => {
   if (isLibraryHomeActive.value) return 'home'
@@ -90,8 +94,34 @@ watch(
   { immediate: true },
 )
 
+let refreshVersion = 0
+async function refreshUnread() {
+  if (!authStore.isAuthenticated) { unreadCount.value = 0; return }
+  const version = ++refreshVersion
+  try {
+    const result = await createApiClient().request<{ items: { read: boolean }[] }>('/api/notifications')
+    if (version === refreshVersion && !notificationsOpen.value) {
+      unreadCount.value = (result.items ?? []).filter(item => !item.read).length
+    }
+  } catch { /* The sidebar remains available while notifications are offline. */ }
+}
+function openNotifications() {
+  notificationsOpen.value = !notificationsOpen.value
+}
+function closeNotifications() {
+  notificationsOpen.value = false
+  void nextTick(() => notificationButton.value?.focus())
+}
+function updateUnread(count: number) { unreadCount.value = count }
+watch(() => route.fullPath, () => {
+  notificationsOpen.value = route?.query?.notifications === '1'
+})
+watch(() => authStore.isAuthenticated, authenticated => {
+  if (!authenticated) { notificationsOpen.value = false; unreadCount.value = 0 }
+})
 onMounted(() => {
-  fetchUserProfile()
+  void fetchUserProfile()
+  if (route?.query?.notifications === '1') notificationsOpen.value = true
 })
 
 function handleNav(tab: 'home' | 'library' | 'reading') {
@@ -118,9 +148,6 @@ function handleNav(tab: 'home' | 'library' | 'reading') {
 
 function goToSaved() {
   if (!isSavedActive.value) router.push({ path: '/library', query: { tab: 'saved' } })
-}
-function goToNotifications() {
-  if (!isNotificationsActive.value) router.push('/library/notifications')
 }
 function goToProfile() {
   if (route.path !== '/profile') {
@@ -211,9 +238,14 @@ async function handleLogout() {
         </span>
         <span v-if="!isSavedActive" class="nav-label">Đã lưu</span>
       </button>
-      <button type="button" class="nav-item" :class="{ active: isNotificationsActive }" title="Thông báo" @click="goToNotifications">
+      <button ref="notificationButton" type="button" class="nav-item notification-trigger" :class="{ active: isNotificationsActive }"
+        title="Thông báo" aria-label="Thông báo" aria-haspopup="dialog" :aria-expanded="notificationsOpen"
+        aria-controls="sidebar-notification-popover" @pointerenter="refreshUnread" @focus="refreshUnread" @click="openNotifications">
         <span class="nav-icon" :data-motion-key="isNotificationsActive ? 'sidebar:active-icon' : undefined">
           <Bell :size="20" :stroke-width="1.6" :fill="isNotificationsActive ? 'currentColor' : 'none'" />
+          <span v-if="unreadCount" class="notification-badge" :aria-label="unreadCount + ' thông báo chưa đọc'">
+            {{ unreadCount > 99 ? '99+' : unreadCount }}
+          </span>
         </span>
         <span v-if="!isNotificationsActive" class="nav-label">Thông báo</span>
       </button>
@@ -262,6 +294,7 @@ async function handleLogout() {
         <LogOut :size="18" />
       </button>
     </div>
+    <NotificationsPopover v-if="notificationsOpen" :anchor="notificationButton" @close="closeNotifications" @unread-change="updateUnread" />
   </aside>
 </template>
 
@@ -328,7 +361,25 @@ async function handleLogout() {
   display: grid;
   place-items: center;
   line-height: 1;
+  position: relative;
 }
+.notification-badge {
+  position: absolute;
+  right: -15px;
+  top: -11px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 20px;
+  background: #bc4d48;
+  border: 2px solid var(--library-surface, #f6f5ef);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 12px;
+  text-align: center;
+  padding: 0 2px;
+}
+.nav-item.active .notification-badge { background: #bc4d48; color: #fff; }
 
 /* Khi tab đang hoạt động: icon fill, ẩn chữ bên dưới */
 .nav-item.active {
