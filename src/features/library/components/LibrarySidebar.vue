@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   Home,
@@ -94,7 +94,6 @@ watch(
   { immediate: true },
 )
 
-let refreshTimer: ReturnType<typeof setInterval> | undefined
 let refreshVersion = 0
 async function refreshUnread() {
   if (!authStore.isAuthenticated) { unreadCount.value = 0; return }
@@ -108,7 +107,6 @@ async function refreshUnread() {
 }
 function openNotifications() {
   notificationsOpen.value = !notificationsOpen.value
-  if (notificationsOpen.value) void refreshUnread()
 }
 function closeNotifications() {
   notificationsOpen.value = false
@@ -119,20 +117,11 @@ watch(() => route.fullPath, () => {
   notificationsOpen.value = route.query.notifications === '1'
 })
 watch(() => authStore.isAuthenticated, authenticated => {
-  if (authenticated) void refreshUnread()
-  else { notificationsOpen.value = false; unreadCount.value = 0 }
+  if (!authenticated) { notificationsOpen.value = false; unreadCount.value = 0 }
 })
 onMounted(() => {
   void fetchUserProfile()
-  void refreshUnread()
   if (route.query.notifications === '1') notificationsOpen.value = true
-  window.addEventListener('focus', refreshUnread)
-  refreshTimer = setInterval(() => { if (!notificationsOpen.value) void refreshUnread() }, 60000)
-})
-onBeforeUnmount(() => {
-  ++refreshVersion
-  window.removeEventListener('focus', refreshUnread)
-  if (refreshTimer) clearInterval(refreshTimer)
 })
 
 function handleNav(tab: 'home' | 'library' | 'reading') {
@@ -251,7 +240,7 @@ async function handleLogout() {
       </button>
       <button ref="notificationButton" type="button" class="nav-item notification-trigger" :class="{ active: isNotificationsActive }"
         title="Thông báo" aria-label="Thông báo" aria-haspopup="dialog" :aria-expanded="notificationsOpen"
-        aria-controls="sidebar-notification-popover" @click="openNotifications">
+        aria-controls="sidebar-notification-popover" @pointerenter="refreshUnread" @focus="refreshUnread" @click="openNotifications">
         <span class="nav-icon" :data-motion-key="isNotificationsActive ? 'sidebar:active-icon' : undefined">
           <Bell :size="20" :stroke-width="1.6" :fill="isNotificationsActive ? 'currentColor' : 'none'" />
           <span v-if="unreadCount" class="notification-badge" :aria-label="unreadCount + ' thông báo chưa đọc'">
