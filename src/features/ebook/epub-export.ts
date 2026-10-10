@@ -17,7 +17,7 @@ function crc32(bytes: Uint8Array): number {
 }
 function packZip(entries: Entry[]): Blob {
   const parts: BlobPart[] = []
-  const central: BlobPart[] = []
+  const central: (ArrayBuffer | Uint8Array<ArrayBuffer>)[] = []
   let offset = 0
   function header(length: number): DataView { return new DataView(new ArrayBuffer(length)) }
   for (const entry of entries) {
@@ -44,7 +44,7 @@ function packZip(entries: Entry[]): Blob {
     central.push(cd.buffer as ArrayBuffer, Uint8Array.from(name))
     offset += 30 + name.length + entry.bytes.length
   }
-  const centralLength = central.reduce((sum, part) => sum + (part instanceof ArrayBuffer ? part.byteLength : part.byteLength), 0)
+  const centralLength = central.reduce((sum, part) => sum + part.byteLength, 0)
   const end = header(22)
   end.setUint32(0, 0x06054b50, true)
   end.setUint16(8, entries.length, true)
