@@ -7,7 +7,7 @@ import { libraryStories } from './fixtures/library-stories'
 import AmbientBackdrop from '../src/features/library/components/AmbientBackdrop.vue'
 import { extractAmbientPalette } from '../src/features/library/ambient-palette'
 
-vi.mock('../src/services/api-client', () => ({ createApiClient: () => ({ request: vi.fn(async () => libraryStories) }) }))
+vi.mock('../src/services/api-client', () => ({ createApiClient: () => ({ request: vi.fn(async (path: string) => path.includes('&q=') ? [] : libraryStories) }) }))
 
 vi.mock('../src/features/library/ambient-palette', () => ({ extractAmbientPalette: vi.fn() }))
 const blue = ['#3b82f6', '#60a5fa', '#8b5cf6'] as [string, string, string]
@@ -100,6 +100,8 @@ describe('Library hover creates persistent multi-color particles', () => {
     await wrapper.findAll('.deck-card')[0]!.trigger('mouseenter')
     await flushPromises()
     await wrapper.get('.search-input-wrapper input').setValue('no matching collection')
+    await vi.advanceTimersByTimeAsync(350)
+    await flushPromises()
     expect(wrapper.findAll('.deck-card')).toHaveLength(0)
     expect(wrapper.findAll('.lava-particle')).toHaveLength(1)
     await vi.advanceTimersByTimeAsync(60000)

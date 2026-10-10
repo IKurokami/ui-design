@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMediaQuery } from '@vueuse/core'
-import { ArrowLeft, ArrowRight, List, Loader2, Maximize2, Minimize2, SlidersHorizontal, X } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, List, Loader2, Maximize2, Minimize2, SlidersHorizontal, Heart, X } from '@lucide/vue'
 import { readerHTML, readableHTML } from '../reader-content'
 import LibrarySidebar from '../components/LibrarySidebar.vue'
 import ReaderChapters from '../components/ReaderChapters.vue'
@@ -19,6 +19,26 @@ const story = ref<Story>()
 const loading = ref(true)
 const loadError = ref('')
 const progressError = ref('')
+const isSaved = ref(false)
+const saveBusy = ref(false)
+const saveError = ref('')
+async function fetchSaved() {
+  try {
+    const { ids } = await client.request<{ ids: string[] }>('/api/favorites/ids')
+    if (!disposed) isSaved.value = ids.includes(String(route.params.id))
+  } catch { /* Reading still works if favorites cannot load. */ }
+}
+async function toggleSaved() {
+  if (!story.value || saveBusy.value) return
+  saveBusy.value = true
+  saveError.value = ''
+  const wasSaved = isSaved.value
+  try {
+    await client.request('/api/favorites/' + encodeURIComponent(story.value.id), { method: wasSaved ? 'DELETE' : 'POST' })
+    isSaved.value = !wasSaved
+  } catch (error) { saveError.value = friendlyError(error) }
+  finally { saveBusy.value = false }
+}
 const activeId = ref('')
 const settings = ref(loadReadingSettings())
 const panel = ref<'chapters' | 'settings'>('chapters')
@@ -83,6 +103,7 @@ async function loadStory() {
   loading.value = false
   if (detail.status === 'rejected') { loadError.value = friendlyError(detail.reason); return }
   story.value = detail.value
+  void fetchSaved()
   if (progress.status === 'rejected') progressError.value = 'Không tải được chương đọc gần nhất. ' + friendlyError(progress.reason)
   else canSaveProgress = true
   const requested = typeof route.query.chapter === 'string' ? route.query.chapter : ''
@@ -170,6 +191,9 @@ function retryProgress() {
           <p v-if="story?.authorName" class="story-author">{{ story.authorName }}</p>
         </div>
         <div v-if="story" class="toolbar-actions">
+          <button type="button" :disabled="saveBusy" :aria-pressed="isSaved" @click="toggleSaved">
+            <Heart :size="16" :fill="isSaved ? 'currentColor' : 'none'" />{{ isSaved ? 'Đã lưu' : 'Lưu truyện' }}
+          </button>
           <button v-if="!isMobile" type="button" :aria-pressed="focused" @click="focused = !focused">
             <Minimize2 v-if="focused" :size="16" /><Maximize2 v-else :size="16" /><span>Tập trung</span>
           </button>
@@ -185,6 +209,7 @@ function retryProgress() {
       <div v-else-if="story" class="reader-workspace" :class="{ 'is-focused': focused }">
         <div ref="scrollArea" class="reading-scroll">
           <article class="reading-article">
+            <div v-if="saveError" class="progress-error" role="alert">{{ saveError }}</div>
             <div v-if="progressError" class="progress-error" role="alert"><p>{{ progressError }}</p><button type="button" @click="retryProgress">Thử lại</button></div>
             <details v-if="story.description" class="story-description"><summary>Thông tin truyện<span v-if="story.category">{{ story.category }}</span></summary><p>{{ story.description }}</p></details>
             <template v-if="chapter">

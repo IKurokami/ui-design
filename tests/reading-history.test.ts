@@ -13,7 +13,7 @@ const stories: Story[] = [
   { id: 'earlier', userId: 'author', title: 'Truyện đọc buổi sáng', coverUrl: '/uploads/morning.jpg', readingProgress: { chapterId: 'earlier-1', chapterNumber: 1, chapterTitle: 'Khởi đầu', updatedAt: date(4, 8) } },
   { id: 'latest', userId: 'author', title: 'Truyện vừa đọc', authorName: 'Tác giả B', createdAt: date(1, 8), coverUrl: '/uploads/latest.jpg', readingProgress: { chapterId: 'latest-2', chapterNumber: 2, chapterTitle: 'Chuyến đi', updatedAt: date(4, 15) } },
 ]
-beforeEach(() => { request.mockReset(); vi.stubGlobal('fetch', request) })
+beforeEach(() => { request.mockReset(); vi.stubGlobal('fetch', (path: string, options?: RequestInit) => path === '/api/favorites/ids' ? Promise.resolve(json({ ids: [] })) : request(path, options)) })
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 async function readingPage() {
   const router = createRouter({ history: createMemoryHistory(), routes: [
@@ -31,7 +31,7 @@ describe('Reading history', () => {
     request.mockResolvedValue(json(stories))
     const { wrapper, router } = await readingPage()
     expect(request).toHaveBeenCalledTimes(1)
-    expect(request).toHaveBeenCalledWith('/api/stories?reading=true', expect.objectContaining({ credentials: 'include' }))
+    expect(request).toHaveBeenCalledWith('/api/stories?reading=true&paginated=true&page=1&pageSize=24', expect.objectContaining({ credentials: 'include' }))
     expect(wrapper.find('.deck-grid').exists()).toBe(false)
     expect(wrapper.findAll('.reading-entry').map(entry => entry.attributes('data-story-id'))).toEqual(['latest', 'earlier', 'old'])
     expect(wrapper.findAll('.reading-date time').map(time => time.text())).toEqual(['04/10/2026', '03/10/2026'])
@@ -85,7 +85,7 @@ describe('Reading history', () => {
 
   it('reads persisted progress from older servers that omit metadata from story summaries', async () => {
     request.mockImplementation((path: string) => Promise.resolve(json(
-      path === '/api/stories?reading=true' ? [{ id: 'legacy', userId: 'author', title: 'Truyện cũ' }]
+      path === '/api/stories?reading=true&paginated=true&page=1&pageSize=24' ? [{ id: 'legacy', userId: 'author', title: 'Truyện cũ' }]
         : path.endsWith('/reading-progress') ? { chapterId: 'legacy-2', updatedAt: date(4, 11) }
           : { id: 'legacy', chapters: [{ id: 'legacy-2', chapterNumber: 2, title: 'Nội dung được lưu' }] },
     )))

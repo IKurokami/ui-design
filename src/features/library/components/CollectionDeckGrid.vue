@@ -8,11 +8,13 @@ import { useAutoMotion } from '../../../animations/composables/useAutoMotion'
 const props = defineProps<{
   decks: CollectionDeck[]
   viewMode?: ViewMode
+  savedIds?: string[]
 }>()
 
 const emit = defineEmits<{
   select: [deck: CollectionDeck]
   hover: [deck: CollectionDeck, element: HTMLElement]
+  toggleSave: [id: string]
 }>()
 
 // Filter/search/sort: kept items FLIP, removed ones exit, new ones enter.
@@ -47,6 +49,8 @@ useAutoMotion(container, () => (props.viewMode ?? 'deck') + '|' + props.decks.ma
         :key="deck.id"
         :data-motion-key="'deck:' + deck.id"
         :deck="deck"
+        :saved="savedIds?.includes(deck.id)"
+        @toggle-save="emit('toggleSave', $event)"
         @click="emit('select', deck)"
         @hover="(deck, element) => emit('hover', deck, element)"
       />

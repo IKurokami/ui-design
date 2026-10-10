@@ -7,7 +7,7 @@ import LibraryPage from '../src/features/library/pages/LibraryPage.vue'
 import { sortCollections } from '../src/features/library/sorting'
 import { libraryStories } from './fixtures/library-stories'
 import { storyToDeck } from '../src/features/library/story-mapping'
-vi.mock('../src/services/api-client', () => ({ createApiClient: () => ({ request: vi.fn(async () => libraryStories) }) }))
+vi.mock('../src/services/api-client', () => ({ createApiClient: () => ({ request: vi.fn(async (path: string) => path.includes('&q=') ? [] : libraryStories) }) }))
 import type { CollectionDeck } from '../src/features/library/types'
 
 const cleanups: (() => void)[] = []
@@ -109,6 +109,8 @@ describe('Library sorting', () => {
     await wrapper.get('[aria-label="Dạng danh sách"]').trigger('click')
     expect(wrapper.findAll('.list-copy strong').map(item => item.text())).toEqual(expected)
     await wrapper.get('input[type="search"]').setValue('no-such-book')
+    await new Promise(resolve => setTimeout(resolve, 360))
+    await flushPromises()
     expect(wrapper.get('.header-stats').text()).toBe('0 bộ truyện')
     expect(wrapper.find('.empty-state').exists()).toBe(true)
   })

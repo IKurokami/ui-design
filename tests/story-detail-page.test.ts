@@ -187,7 +187,7 @@ describe('Story reader', () => {
     serve()
     const { wrapper } = await reader()
     expect(wrapper.find('.reader-panel').exists()).toBe(false)
-    await wrapper.get('.toolbar-actions button:first-child').trigger('click')
+    await wrapper.findAll('.toolbar-actions button[aria-controls]')[0]!.trigger('click')
     await flushPromises()
     expect(wrapper.get('dialog').element.open).toBe(true)
     await wrapper.findAll('dialog .chapter-list button')[1]!.trigger('click')
