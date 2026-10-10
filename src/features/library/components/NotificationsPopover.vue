@@ -149,6 +149,7 @@ async function clearAll() {
     <div class="notification-outside" aria-hidden="true" @click="close" />
     <section
       ref="panel"
+      id="sidebar-notification-popover"
       class="notification-popover"
       role="dialog"
       aria-label="Thông báo"
