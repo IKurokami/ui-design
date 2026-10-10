@@ -35,6 +35,7 @@ import { createApiClient } from '../../../services/api-client'
 import { friendlyError } from '../../../services/error-handler'
 import type { Chapter, Story } from '../../library/types'
 import EbookPageCanvas from '../components/EbookPageCanvas.vue'
+import { buildEpub, safeEpubFilename } from '../epub-export'
 import EbookFlipBookPreview from '../components/EbookFlipBookPreview.vue'
 import { PAGE_ASPECT_RATIO, PAGE_HEIGHT, PAGE_WIDTH, type EbookDraft, type EbookElement, type EbookPage, type ElementKind, type PageKind, type TextAlign, type TextDecoration, type TextTransform, type VerticalAlign } from '../types'
 import '../../library/library-theme.css'
@@ -739,6 +740,28 @@ function handleEditorKeydown(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void saveDraft() }
 }
 function exportDesign() { syncAllPages(); window.print() }
+const exportingEpub = ref(false)
+async function exportEpub() {
+  if (exportingEpub.value || isLoading.value || loadError.value) return
+  exportingEpub.value = true
+  try {
+    syncAllPages()
+    const blob = await buildEpub(draft.value)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = safeEpubFilename(draft.value.title)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 3000)
+    showToast('Đã tạo file EPUB để tải về.')
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'Không thể xuất EPUB.', 'error')
+  } finally {
+    exportingEpub.value = false
+  }
+}
 
 async function saveDraft() {
   if (isSaving.value || isLoading.value || loadError.value) return
@@ -804,7 +827,7 @@ onBeforeUnmount(() => { finishInteraction(); closePreview(); if (toast.timer) cl
     <main class="ebook-studio-main">
       <header class="ebook-header">
         <label class="ebook-name-input"><span class="sr-only">Tên ebook</span><input v-model="draft.title" placeholder="Tên ebook" /></label>
-        <div class="ebook-header-actions"><span class="ebook-save-state" :class="{ error: saveError }"><Check v-if="!isDirty && !saveError && ebookId" :size="14" />{{ saveState }}</span><button type="button" class="ebook-icon-button" title="Hoàn tác" @click="undo"><Undo2 :size="16" /></button><button type="button" class="ebook-icon-button" title="Làm lại" @click="redo"><Redo2 :size="16" /></button><button type="button" class="ebook-action-button" title="Xem trước" @click="openPreview"><Eye :size="15" />Xem trước</button><button type="button" class="ebook-action-button" @click="exportDesign"><Download :size="15" />Xuất</button><button type="button" class="ebook-save-button ebook-primary-btn" :disabled="isSaving || isLoading || !!loadError" @click="saveDraft">{{ isSaving ? 'Đang lưu' : 'Lưu' }}</button></div>
+        <div class="ebook-header-actions"><span class="ebook-save-state" :class="{ error: saveError }"><Check v-if="!isDirty && !saveError && ebookId" :size="14" />{{ saveState }}</span><button type="button" class="ebook-icon-button" title="Hoàn tác" @click="undo"><Undo2 :size="16" /></button><button type="button" class="ebook-icon-button" title="Làm lại" @click="redo"><Redo2 :size="16" /></button><button type="button" class="ebook-action-button" title="Xem trước" @click="openPreview"><Eye :size="15" />Xem trước</button><button type="button" class="ebook-action-button" title="Mở hộp thoại in và lưu thành PDF" @click="exportDesign"><Download :size="15" />PDF</button><button type="button" class="ebook-action-button" :disabled="exportingEpub" title="Tải sách EPUB có mục lục và ảnh" @click="exportEpub"><Download :size="15" />{{ exportingEpub ? 'Đang xuất…' : 'EPUB' }}</button><button type="button" class="ebook-save-button ebook-primary-btn" :disabled="isSaving || isLoading || !!loadError" @click="saveDraft">{{ isSaving ? 'Đang lưu' : 'Lưu' }}</button></div>
       </header>
       <div v-if="saveError && !isLoading && !loadError" class="ebook-save-error" role="alert"><span>{{ saveError }}</span><button type="button" :disabled="isSaving" @click="saveDraft">Thử lưu lại</button></div>
 
