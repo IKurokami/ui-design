@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMediaQuery } from '@vueuse/core'
-import { ArrowLeft, ArrowRight, List, Loader2, Maximize2, Minimize2, SlidersHorizontal, Heart, Bell, X } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, List, Loader2, Maximize2, Minimize2, SlidersHorizontal, Heart, Bell, BellOff, X } from '@lucide/vue'
 import { readerHTML, readableHTML } from '../reader-content'
 import LibrarySidebar from '../components/LibrarySidebar.vue'
 import ReaderChapters from '../components/ReaderChapters.vue'
@@ -24,6 +24,28 @@ const isSaved = ref(false)
 const isFollowing = ref(false)
 const followBusy = ref(false)
 const followError = ref('')
+const notificationsMuted = ref(false)
+const muteBusy = ref(false)
+const muteError = ref('')
+async function loadNotificationMute() {
+  const target = String(route.params.id)
+  try {
+    const { ids } = await client.request<{ ids: string[] }>('/api/notifications/muted')
+    if (!disposed && target === String(route.params.id)) notificationsMuted.value = ids.includes(target)
+  } catch { /* Mute preference is optional; the reader remains available. */ }
+}
+async function toggleNotificationMute() {
+  if (!story.value || muteBusy.value) return
+  muteBusy.value = true
+  muteError.value = ''
+  try {
+    await client.request('/api/notifications/mute/' + encodeURIComponent(story.value.id), {
+      method: notificationsMuted.value ? 'DELETE' : 'POST',
+    })
+    notificationsMuted.value = !notificationsMuted.value
+  } catch (error) { muteError.value = friendlyError(error) }
+  finally { muteBusy.value = false }
+}
 async function loadFollowed() {
   try {
     const result = await client.request<{ ids: string[] }>('/api/follows/ids')
@@ -125,6 +147,7 @@ async function loadStory() {
   story.value = detail.value
   void fetchSaved()
   void loadFollowed()
+  void loadNotificationMute()
   if (progress.status === 'rejected') progressError.value = 'Không tải được chương đọc gần nhất. ' + friendlyError(progress.reason)
   else canSaveProgress = true
   const requested = typeof route.query.chapter === 'string' ? route.query.chapter : ''
@@ -215,6 +238,13 @@ function retryProgress() {
           <button type="button" :disabled="followBusy" :aria-pressed="isFollowing" @click="toggleFollow">
             <Bell :size="16" :fill="isFollowing ? 'currentColor' : 'none'" />{{ isFollowing ? 'Đang theo dõi' : 'Theo dõi' }}
           </button>
+          <button v-if="story.status === 'published' || story.status === 'completed'" type="button"
+            :disabled="muteBusy" :aria-pressed="notificationsMuted"
+            :title="notificationsMuted ? 'Nhận lại thông báo khi truyện có chương mới' : 'Không nhận thông báo chương mới của truyện này'"
+            @click="toggleNotificationMute">
+            <BellOff v-if="notificationsMuted" :size="16" /><Bell v-else :size="16" />
+            {{ notificationsMuted ? 'Đã tắt báo' : 'Tắt thông báo' }}
+          </button>
           <button type="button" :disabled="saveBusy" :aria-pressed="isSaved" @click="toggleSaved">
             <Heart :size="16" :fill="isSaved ? 'currentColor' : 'none'" />{{ isSaved ? 'Đã lưu' : 'Lưu truyện' }}
           </button>
@@ -233,6 +263,7 @@ function retryProgress() {
       <div v-else-if="story" class="reader-workspace" :class="{ 'is-focused': focused }">
         <div ref="scrollArea" class="reading-scroll">
           <article class="reading-article">
+            <div v-if="muteError" class="progress-error" role="alert">{{ muteError }}</div>
             <div v-if="followError" class="progress-error" role="alert">{{ followError }}</div>
             <div v-if="saveError" class="progress-error" role="alert">{{ saveError }}</div>
             <div v-if="progressError" class="progress-error" role="alert"><p>{{ progressError }}</p><button type="button" @click="retryProgress">Thử lại</button></div>
