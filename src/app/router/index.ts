@@ -27,6 +27,12 @@ export const router = createRouter({
       component: () => import('../../features/library/pages/StoryDetailPage.vue'),
       meta: { title: 'Đọc truyện', layout: 'dashboard', requiresAuth: true },
     },
+    {
+      path: '/library/notifications',
+      name: 'notifications',
+      component: () => import('../../features/library/pages/NotificationsPage.vue'),
+      meta: { title: 'Thông báo', layout: 'dashboard', requiresAuth: true },
+    },
     { path: '/bookshelf', redirect: '/library/bookshelf' },
     {
       path: '/profile',
