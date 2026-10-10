@@ -13,7 +13,7 @@ const stories: Story[] = [
   { id: 'earlier', userId: 'author', title: 'Truyện đọc buổi sáng', coverUrl: '/uploads/morning.jpg', readingProgress: { chapterId: 'earlier-1', chapterNumber: 1, chapterTitle: 'Khởi đầu', updatedAt: date(4, 8) } },
   { id: 'latest', userId: 'author', title: 'Truyện vừa đọc', authorName: 'Tác giả B', createdAt: date(1, 8), coverUrl: '/uploads/latest.jpg', readingProgress: { chapterId: 'latest-2', chapterNumber: 2, chapterTitle: 'Chuyến đi', updatedAt: date(4, 15) } },
 ]
-beforeEach(() => { request.mockReset(); vi.stubGlobal('fetch', request) })
+beforeEach(() => { request.mockReset(); vi.stubGlobal('fetch', (path: string, options?: RequestInit) => path === '/api/favorites/ids' ? Promise.resolve(json({ ids: [] })) : request(path, options)) })
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 async function readingPage() {
   const router = createRouter({ history: createMemoryHistory(), routes: [
