@@ -180,7 +180,9 @@ const allCollections = computed(() => stories.value.map(storyToDeck))
 const categories = computed(() => storyCategories(stories.value))
 const filteredDecks = computed(() => allCollections.value.filter(deck => {
   if (activeCategory.value !== 'all' && deck.category !== activeCategory.value) return false
-  const query = searchQuery.value.toLowerCase().trim()
+  // Catalog search already ran in SQL (including author and genre).
+  // Only personal saved lists use in-browser filtering.
+  const query = isSaved.value ? searchQuery.value.toLowerCase().trim() : ''
   return !query || deck.title.toLowerCase().includes(query) || deck.tags.some(tag => tag.toLowerCase().includes(query))
 }))
 const sortedDecks = computed(() => sortCollections(filteredDecks.value, sortMode.value))
