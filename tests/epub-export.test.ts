@@ -19,7 +19,13 @@ describe('EPUB3 export', () => {
   it('builds an actual uncompressed EPUB3 ZIP with spine, TOC, and escaped Vietnamese text', async () => {
     const blob = await buildEpub(draft)
     expect(blob.type).toBe('application/epub+zip')
-    const bytes = new Uint8Array(await blob.arrayBuffer())
+    const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as ArrayBuffer)
+      reader.onerror = () => reject(reader.error)
+      reader.readAsArrayBuffer(blob)
+    })
+    const bytes = new Uint8Array(buffer)
     const view = new DataView(bytes.buffer)
     expect(view.getUint32(0, true)).toBe(0x04034b50)
     const nameLen = view.getUint16(26, true)
