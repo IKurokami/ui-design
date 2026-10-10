@@ -49,6 +49,8 @@ useAutoMotion(container, () => (props.viewMode ?? 'deck') + '|' + props.decks.ma
         :key="deck.id"
         :data-motion-key="'deck:' + deck.id"
         :deck="deck"
+        :saved="savedIds?.includes(deck.id)"
+        @toggle-save="emit('toggleSave', $event)"
         @click="emit('select', deck)"
         @hover="(deck, element) => emit('hover', deck, element)"
       />
