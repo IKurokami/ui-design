@@ -123,11 +123,11 @@ function date(s: string) {
             <span v-if="!item.read" class="unread-dot" aria-label="Chưa đọc" />
           </button>
           <div class="item-actions">
-            <button type="button" class="mute-action" :disabled="!!actionBusy || !!busy"
+            <button type="button" class="mute-action mute-story-action" :disabled="!!actionBusy || !!busy"
               :aria-label="'Hủy nhận thông báo từ truyện ' + item.storyTitle"
               title="Hủy và chặn mọi thông báo chương mới từ truyện này"
               @click="cancelStory(item)">
-              <BellOff :size="17" />
+              <BellOff :size="17" /><span>Hủy nhận</span>
             </button>
             <button type="button" class="mute-action" :disabled="!!actionBusy || !!busy"
               :aria-label="'Xóa thông báo ' + item.chapterTitle + ' của truyện ' + item.storyTitle"
@@ -169,6 +169,8 @@ function date(s: string) {
 .inbox-actions button:hover{color:#9b4c4c}.inbox-actions button:disabled{opacity:.4}
 .notice{font-size:12px;line-height:1.6;color:var(--library-accent,#435a41);margin-bottom:15px}
 .item-actions{display:flex;align-items:center;gap:3px}
+.mute-story-action{display:flex!important;gap:7px;align-items:center;justify-content:center;width:auto!important;flex:0 0 auto!important;padding:0 10px!important;font-size:11px;white-space:nowrap}
+@media(max-width:600px){.mute-story-action{font-size:0;gap:0}.mute-story-action span{display:none}}
 .muted-section{max-width:850px;margin-top:60px;padding-top:28px;border-top:1px solid color-mix(in oklab,var(--library-muted,#68786c) 22%,transparent)}
 .muted-section h2{display:flex;gap:10px;align-items:center;font:500 17px var(--serif,Georgia,serif)}
 .muted-section>p{font-size:12px;line-height:1.7;color:var(--library-muted,#68786c)}
