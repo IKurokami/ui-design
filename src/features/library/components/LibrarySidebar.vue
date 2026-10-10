@@ -114,14 +114,14 @@ function closeNotifications() {
 }
 function updateUnread(count: number) { unreadCount.value = count }
 watch(() => route.fullPath, () => {
-  notificationsOpen.value = route.query.notifications === '1'
+  notificationsOpen.value = route?.query?.notifications === '1'
 })
 watch(() => authStore.isAuthenticated, authenticated => {
   if (!authenticated) { notificationsOpen.value = false; unreadCount.value = 0 }
 })
 onMounted(() => {
   void fetchUserProfile()
-  if (route.query.notifications === '1') notificationsOpen.value = true
+  if (route?.query?.notifications === '1') notificationsOpen.value = true
 })
 
 function handleNav(tab: 'home' | 'library' | 'reading') {
