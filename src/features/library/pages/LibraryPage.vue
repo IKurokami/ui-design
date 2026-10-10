@@ -60,6 +60,41 @@ usePageScrollRestoration('main', scrollArea, contentReady)
 const layout = ref<HTMLElement>()
 useLibraryEntrance(layout, scrollArea, computed(() => !isLoading.value))
 const isReading = computed(() => route.query.tab === 'reading')
+const isSaved = computed(() => route.query.tab === 'saved')
+const savedIds = ref<string[]>([])
+const saveBusy = ref<string[]>([])
+const saveError = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+async function loadSavedIds() {
+  try {
+    const response = await client.request<{ids: string[]}>('/api/favorites/ids')
+    if (!disposed) savedIds.value = response.ids ?? []
+  } catch { /* Keep the library usable during a favorites API error. */ }
+}
+async function toggleSaved(id: string) {
+  if (saveBusy.value.includes(id)) return
+  saveBusy.value = [...saveBusy.value, id]
+  saveError.value = ''
+  const wasSaved = savedIds.value.includes(id)
+  try {
+    await client.request('/api/favorites/' + encodeURIComponent(id), { method: wasSaved ? 'DELETE' : 'POST' })
+    savedIds.value = wasSaved ? savedIds.value.filter(item => item !== id) : [...savedIds.value, id]
+    if (wasSaved && isSaved.value) stories.value = stories.value.filter(story => story.id !== id)
+  } catch (error) { saveError.value = friendlyError(error) }
+  finally { saveBusy.value = saveBusy.value.filter(item => item !== id) }
+}
+function listPath(page: number): string {
+  if (isSaved.value) return `/api/favorites?page=${page}&pageSize=24`
+  if (isReading.value) return `/api/stories?reading=true&paginated=true&page=${page}&pageSize=24`
+  const q = searchQuery.value.trim()
+  return `/api/stories?paginated=true&page=${page}&pageSize=24` + (q ? '&q=' + encodeURIComponent(q) : '')
+}
+watch(searchQuery, () => {
+  if (isReading.value || isSaved.value) return
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { activeCategory.value = 'all'; void loadStories() }, 300)
+})
+onBeforeUnmount(() => clearTimeout(searchTimer))
 let requestVersion = 0
 let loadObserver: IntersectionObserver | undefined
 async function loadMissingPreviews(data: Story[], version: number) {
@@ -88,7 +123,7 @@ async function loadStories() {
   loadError.value = ''
   try {
     const reading = isReading.value
-    const path = reading ? '/api/stories?reading=true&paginated=true&page=1&pageSize=24' : '/api/stories?paginated=true&page=1&pageSize=24'
+    const path = listPath(1)
     const response = await client.request<{items:Story[];hasMore?:boolean;nextPage?:number} | Story[]>(path)
     const data = Array.isArray(response) ? response : response.items
     if (!Array.isArray(response)) { hasMore.value = Boolean(response.hasMore); nextPage.value = response.nextPage || 2 } else { hasMore.value = data.length >= 24; nextPage.value = 2 }
@@ -127,15 +162,16 @@ async function loadMore() {
   if (!hasMore.value || loadingMore.value || isLoading.value) return
   loadingMore.value = true
   try {
-    const page = nextPage.value; const path = isReading.value ? `/api/stories?reading=true&paginated=true&page=${page}&pageSize=24` : `/api/stories?paginated=true&page=${page}&pageSize=24`
+    const page = nextPage.value; const path = listPath(page)
     const response = await client.request<{items:Story[];hasMore?:boolean;nextPage?:number} | Story[]>(path); const incoming = Array.isArray(response) ? response : response.items
     const known = new Set(stories.value.map(story => story.id)); stories.value = [...stories.value, ...incoming.filter(story => !known.has(story.id))]
     hasMore.value = Array.isArray(response) ? incoming.length === 24 : Boolean(response.hasMore); nextPage.value = Array.isArray(response) ? page + 1 : (response.nextPage || page + 1)
   } catch (cause) { loadError.value = friendlyError(cause) } finally { loadingMore.value = false }
 }
-watch(isReading, () => { activeCategory.value = 'all'; loadStories() })
+watch(() => route.query.tab, () => { activeCategory.value = 'all'; searchQuery.value = ''; void loadStories(); void loadSavedIds() })
 onMounted(() => {
   loadStories()
+  void loadSavedIds()
   if (typeof IntersectionObserver !== 'undefined') { loadObserver = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) void loadMore() }, { root: scrollArea.value ?? null, rootMargin: '500px' }); if (loadSentinel.value) loadObserver.observe(loadSentinel.value) }
   if (route.query.create === 'true' || route.query.create === '1') router.push('/library/editor')
 })
@@ -169,7 +205,7 @@ function onSelectDeck(deck: CollectionDeck) {
           <template v-else>
             <LibraryStickyHeader
               :scroll-element="scrollArea"
-              title="Thư viện"
+               :title="isSaved ? 'Đã lưu' : 'Thư viện'"
               :total-collections="allCollections.length"
               :result-count="filteredDecks.length"
               :categories="categories"
@@ -178,12 +214,17 @@ function onSelectDeck(deck: CollectionDeck) {
               v-model:searchQuery="searchQuery"
               v-model:sortMode="sortMode"
             />
+            <!-- Personal saved stories are separate from reading history. -->
+            <p v-if="isSaved" class="saved-intro">Những truyện bạn lưu để đọc sau. Danh sách được đồng bộ với tài khoản.</p>
+            <p v-if="saveError" role="alert" class="saved-error">{{ saveError }}</p>
             <!-- Deck Grid View Component -->
             <div v-if="isLoading" class="library-request-state" role="status" aria-label="Đang tải thư viện"><Loader2 :size="28" class="spin" /></div>
             <div v-else-if="loadError" class="library-request-state" role="alert"><p>{{ loadError }}</p><button type="button" @click="loadStories">Thử lại</button></div>
             <CollectionDeckGrid v-else
               :decks="sortedDecks"
               :view-mode="viewMode"
+              :saved-ids="savedIds"
+              @toggle-save="toggleSaved"
               @select="onSelectDeck"
               @hover="onDeckHover"
             />
@@ -196,6 +237,8 @@ function onSelectDeck(deck: CollectionDeck) {
 </template>
 
 <style scoped>
+.saved-intro { margin: 12px 0 24px; color:var(--library-muted); font-size:12px; }
+.saved-error { color:#b14b53; font-size:12px; padding:12px; }
 .reading-library-layout :deep(.user-avatar-wrap), .reading-library-layout :deep(.avatar-btn) { box-shadow: none; }
 .library-request-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: 300px; color: var(--library-muted); font-size: 13px; text-align: center; }
 .library-load-sentinel { display:flex; justify-content:center; align-items:center; min-height:52px; color:var(--library-muted); font-size:11px; }
