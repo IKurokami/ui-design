@@ -189,6 +189,34 @@ describe('sidebar notification popover', () => {
     expect(request).toHaveBeenCalledWith('/api/notifications/mute/story-one', { method: 'DELETE' })
   })
 
+  it('discards pending inbox responses after closing and unmounting the popover', async () => {
+    let resolveInbox!: (value: { items: InboxItem[] }) => void
+    const pendingInbox = new Promise<{ items: InboxItem[] }>(resolve => { resolveInbox = resolve })
+    request.mockImplementation(async (path: string) => {
+      if (path === '/api/notifications') return pendingInbox
+      if (path === '/api/notifications/muted/stories') return { items: [] }
+      throw Error('Unexpected API request ' + path)
+    })
+    const { wrapper } = await setup()
+    expect(wrapper.emitted('unreadChange')).toBeUndefined()
+    wrapper.unmount()
+    resolveInbox({ items: inbox })
+    await flushPromises()
+    expect(wrapper.emitted('unreadChange')).toBeUndefined()
+  })
+
+  it('keeps the popover within a narrow viewport and repositions on resize', async () => {
+    vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(320)
+    const { wrapper } = await setup()
+    const panel = document.querySelector<HTMLElement>('.notification-popover')!
+    expect(parseFloat(panel.style.left) + parseFloat(panel.style.width)).toBeLessThanOrEqual(312)
+    vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(280)
+    window.dispatchEvent(new Event('resize'))
+    await flushPromises()
+    expect(parseFloat(panel.style.left) + parseFloat(panel.style.width)).toBeLessThanOrEqual(272)
+    expect(wrapper.find('.notification-popover').exists()).toBe(false) // dialog is teleported into body
+  })
+
   it('opens from the sidebar bell with an unread badge instead of navigating', async () => {
     const router = createRouter({
       history: createMemoryHistory(),
