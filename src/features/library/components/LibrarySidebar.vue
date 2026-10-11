@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   Home,
@@ -95,15 +95,25 @@ watch(
 )
 
 let refreshVersion = 0
+let hasCheckedNotifications = false
+let notificationPoll: ReturnType<typeof setInterval> | undefined
 async function refreshUnread() {
   if (!authStore.isAuthenticated) { unreadCount.value = 0; return }
+  hasCheckedNotifications = true
   const version = ++refreshVersion
+  const accountId = authStore.user?.id
   try {
     const result = await createApiClient().request<{ items: { read: boolean }[] }>('/api/notifications')
-    if (version === refreshVersion && !notificationsOpen.value) {
+    if (version === refreshVersion && authStore.isAuthenticated &&
+        accountId === authStore.user?.id && !notificationsOpen.value) {
       unreadCount.value = (result.items ?? []).filter(item => !item.read).length
     }
   } catch { /* The sidebar remains available while notifications are offline. */ }
+}
+function refreshIfActive() {
+  if (hasCheckedNotifications && !notificationsOpen.value && document.visibilityState !== 'hidden') {
+    void refreshUnread()
+  }
 }
 function openNotifications() {
   notificationsOpen.value = !notificationsOpen.value
@@ -116,12 +126,34 @@ function updateUnread(count: number) { unreadCount.value = count }
 watch(() => route.fullPath, () => {
   notificationsOpen.value = route?.query?.notifications === '1'
 })
+watch(() => authStore.user?.id, () => {
+  ++refreshVersion
+  hasCheckedNotifications = false
+  notificationsOpen.value = false
+  unreadCount.value = 0
+})
 watch(() => authStore.isAuthenticated, authenticated => {
-  if (!authenticated) { notificationsOpen.value = false; unreadCount.value = 0 }
+  if (!authenticated) {
+    ++refreshVersion
+    hasCheckedNotifications = false
+    notificationsOpen.value = false
+    unreadCount.value = 0
+  }
 })
 onMounted(() => {
   void fetchUserProfile()
   if (route?.query?.notifications === '1') notificationsOpen.value = true
+  // Poll only after the reader first interacts with notifications; avoid
+  // extra API calls when unrelated library pages mount.
+  notificationPoll = setInterval(refreshIfActive, 60000)
+  window.addEventListener('focus', refreshIfActive)
+  document.addEventListener('visibilitychange', refreshIfActive)
+})
+onBeforeUnmount(() => {
+  ++refreshVersion
+  if (notificationPoll) clearInterval(notificationPoll)
+  window.removeEventListener('focus', refreshIfActive)
+  document.removeEventListener('visibilitychange', refreshIfActive)
 })
 
 function handleNav(tab: 'home' | 'library' | 'reading') {

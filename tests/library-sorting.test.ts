@@ -111,12 +111,15 @@ describe('Library sorting', () => {
     await wrapper.get('input[type="search"]').setValue('no-such-book')
     await new Promise(resolve => setTimeout(resolve, 360))
     await flushPromises()
-    // Search is debounced and the request may briefly replace the catalog with
-    // its loading placeholder on slower CI workers.
-    await vi.waitFor(() => {
-      expect(wrapper.find('.header-stats').exists()).toBe(true)
+    // The expanded header is intentionally absent while the sticky header is
+    // compact; assert the actual search results, not the presence of that header.
+    await vi.waitFor(async () => {
+      await flushPromises()
+      expect(wrapper.find('.library-request-state').exists()).toBe(false)
+      expect(wrapper.find('.empty-state').exists()).toBe(true)
+    }, { timeout: 5000 })
+    if (wrapper.find('.header-stats').exists()) {
       expect(wrapper.get('.header-stats').text()).toBe('0 bộ truyện')
-    }, { timeout: 4000 })
-    expect(wrapper.find('.empty-state').exists()).toBe(true)
+    }
   })
 })

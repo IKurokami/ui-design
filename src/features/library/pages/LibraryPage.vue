@@ -119,6 +119,8 @@ async function loadMissingPreviews(data: Story[], version: number) {
 async function loadStories() {
   const version = ++requestVersion
   nextPage.value = 1; hasMore.value = true
+  // A search or tab switch invalidates any prior infinite-scroll response.
+  loadingMore.value = false
   isLoading.value = true
   loadError.value = ''
   try {
@@ -159,14 +161,24 @@ async function loadStories() {
   }
 }
 async function loadMore() {
-  if (!hasMore.value || loadingMore.value || isLoading.value) return
+  if (!hasMore.value || loadingMore.value || isLoading.value || disposed) return
+  const version = requestVersion
+  const page = nextPage.value
+  const path = listPath(page)
   loadingMore.value = true
   try {
-    const page = nextPage.value; const path = listPath(page)
-    const response = await client.request<{items:Story[];hasMore?:boolean;nextPage?:number} | Story[]>(path); const incoming = Array.isArray(response) ? response : response.items
-    const known = new Set(stories.value.map(story => story.id)); stories.value = [...stories.value, ...incoming.filter(story => !known.has(story.id))]
-    hasMore.value = Array.isArray(response) ? incoming.length === 24 : Boolean(response.hasMore); nextPage.value = Array.isArray(response) ? page + 1 : (response.nextPage || page + 1)
-  } catch (cause) { loadError.value = friendlyError(cause) } finally { loadingMore.value = false }
+    const response = await client.request<{items:Story[];hasMore?:boolean;nextPage?:number} | Story[]>(path)
+    if (disposed || version !== requestVersion || isLoading.value) return
+    const incoming = Array.isArray(response) ? response : response.items
+    const known = new Set(stories.value.map(story => story.id))
+    stories.value = [...stories.value, ...incoming.filter(story => !known.has(story.id))]
+    hasMore.value = Array.isArray(response) ? incoming.length === 24 : Boolean(response.hasMore)
+    nextPage.value = Array.isArray(response) ? page + 1 : (response.nextPage || page + 1)
+  } catch (cause) {
+    if (!disposed && version === requestVersion) loadError.value = friendlyError(cause)
+  } finally {
+    if (!disposed && version === requestVersion) loadingMore.value = false
+  }
 }
 watch(() => route.query.tab, () => { activeCategory.value = 'all'; searchQuery.value = ''; void loadStories(); void loadSavedIds() })
 onMounted(() => {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Bell, BellOff, Check, ChevronLeft, Loader2, MoreHorizontal, RotateCcw, Trash2, X } from '@lucide/vue'
 import { createApiClient } from '../../../services/api-client'
@@ -24,6 +24,10 @@ const router = useRouter()
 const api = createApiClient()
 const panel = ref<HTMLElement>()
 const top = ref(12)
+const left = ref(85)
+const width = ref(365)
+let reloadVersion = 0
+let disposed = false
 const items = ref<Notification[]>([])
 const muted = ref<MutedStory[]>([])
 const filter = ref<'all' | 'unread' | 'muted'>('all')
@@ -38,10 +42,15 @@ const visible = computed(() => filter.value === 'unread' ? items.value.filter(it
 function updateCount() { emit('unreadChange', unreadCount.value) }
 function placePanel() {
   const rect = props.anchor?.getBoundingClientRect()
-  const available = Math.max(250, window.innerHeight - 24)
-  top.value = Math.max(12, Math.min((rect?.top ?? 90) - 68, window.innerHeight - Math.min(560, available) - 12))
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+  // Keep the flyout entirely inside the viewport even if the sidebar moves.
+  left.value = Math.max(8, Math.min((rect?.right ?? 76) + 9, viewportWidth - 192))
+  width.value = Math.max(160, Math.min(365, viewportWidth - left.value - 8))
+  top.value = Math.max(12, Math.min((rect?.top ?? 90) - 68, viewportHeight - Math.min(560, viewportHeight - 24) - 12))
 }
 async function reload() {
+  const version = ++reloadVersion
   loading.value = true
   error.value = ''
   try {
@@ -49,17 +58,28 @@ async function reload() {
       api.request<{ items: Notification[] }>('/api/notifications'),
       api.request<{ items: MutedStory[] }>('/api/notifications/muted/stories'),
     ])
+    if (disposed || version !== reloadVersion) return
     items.value = notifications.items ?? []
     muted.value = blocked.items ?? []
     updateCount()
-  } catch (cause) { error.value = friendlyError(cause) }
-  finally { loading.value = false }
+  } catch (cause) {
+    if (!disposed && version === reloadVersion) error.value = friendlyError(cause)
+  } finally {
+    if (!disposed && version === reloadVersion) loading.value = false
+  }
 }
 onMounted(async () => {
   placePanel()
+  window.addEventListener('resize', placePanel)
   await nextTick()
+  if (disposed) return
   panel.value?.focus()
   await reload()
+})
+onBeforeUnmount(() => {
+  disposed = true
+  ++reloadVersion
+  window.removeEventListener('resize', placePanel)
 })
 function close() { emit('close') }
 function relativeDate(date: string) {
@@ -155,7 +175,7 @@ async function clearAll() {
       aria-label="Thông báo"
       aria-modal="false"
       tabindex="-1"
-      :style="{ top: top + 'px' }"
+      :style="{ top: top + 'px', left: left + 'px', width: width + 'px' }"
       @keydown.esc.stop.prevent="close"
     >
       <header class="popover-heading">
