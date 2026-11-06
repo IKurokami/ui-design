@@ -6,7 +6,7 @@ import ResetPasswordPage from '../../features/auth/pages/ResetPasswordPage.vue'
 import { authGuard } from './auth-guard'
 
 export const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/', name: 'home', component: () => import('../../features/home/pages/HomePage.vue'), meta: { title: 'Khám phá', layout: 'home' } },
     {
