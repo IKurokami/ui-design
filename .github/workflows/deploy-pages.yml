@@ -28,10 +28,10 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build for GitHub Pages
-        env:
-          GITHUB_PAGES: 'true'
-        run: pnpm build
+      - name: Typecheck and build for GitHub Pages
+        run: |
+          pnpm exec vue-tsc -b
+          pnpm exec vite build --base=/ui-design/
       - name: Provide SPA fallback and disable Jekyll
         run: |
           cp dist/index.html dist/404.html
